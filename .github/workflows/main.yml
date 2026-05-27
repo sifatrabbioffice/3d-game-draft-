@@ -32,7 +32,7 @@ jobs:
       # ── AppDelegate ──────────────────────────────────────────────────────────
       - name: Create AppDelegate.swift
         run: |
-          cat > GameHub/Sources/AppDelegate.swift << 'SWIFT_EOF'
+          cat << 'EOF' > GameHub/Sources/AppDelegate.swift
           import UIKit
           @main
           class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -47,18 +47,16 @@ jobs:
                   return true
               }
           }
-          SWIFT_EOF
+          EOF
 
       # ── Input System: PS5 DualSense Virtual Controller ───────────────────────
       - name: Write Input Controller System
         run: |
-          cat > GameHub/Sources/Input/ControllerInput.swift << 'SWIFT'
+          cat << 'EOF' > GameHub/Sources/Input/ControllerInput.swift
           import GameController
           import CoreHaptics
           import Foundation
 
-          /// GameHub Input Manager
-          /// Maps touch HUD → XInput standard → Wine → Game
           class ControllerInput: ObservableObject {
               static let shared = ControllerInput()
               
@@ -79,10 +77,10 @@ jobs:
                   config.elements = [
                       GCInputLeftThumbstick,
                       GCInputRightThumbstick,
-                      GCInputButtonA,    // Cross
-                      GCInputButtonB,    // Circle
-                      GCInputButtonX,    // Square
-                      GCInputButtonY,    // Triangle
+                      GCInputButtonA,
+                      GCInputButtonB,
+                      GCInputButtonX,
+                      GCInputButtonY,
                       GCInputLeftShoulder,
                       GCInputRightShoulder,
                       GCInputLeftTrigger,
@@ -162,24 +160,24 @@ jobs:
               
               func xinputToWineVK(_ button: String) -> UInt32 {
                   let map: [String: UInt32] = [
-                      "Cross": 0x58,     // VK_X
-                      "Circle": 0x42,    // VK_B
-                      "Square": 0x41,    // VK_A
-                      "Triangle": 0x59,  // VK_Y
-                      "L1": 0x51,        // VK_Q (LB)
-                      "R1": 0x45,        // VK_E (RB)
-                      "L2": 0x4C,        // VK_L (LT)
-                      "R2": 0x52,        // VK_R (RT)
+                      "Cross": 0x58,
+                      "Circle": 0x42,
+                      "Square": 0x41,
+                      "Triangle": 0x59,
+                      "L1": 0x51,
+                      "R1": 0x45,
+                      "L2": 0x4C,
+                      "R2": 0x52,
                   ]
                   return map[button] ?? 0
               }
           }
-          SWIFT
+          EOF
 
       # ── Types ────────────────────────────────────────────────────────────────
       - name: Create Types.swift
         run: |
-          cat > GameHub/Sources/Types.swift << 'SWIFT_EOF'
+          cat << 'EOF' > GameHub/Sources/Types.swift
           import UIKit
           struct PhysicsMask {
               static let none:   Int = 0
@@ -258,12 +256,12 @@ jobs:
                   }
               }
           }
-          SWIFT_EOF
+          EOF
 
       # ── HUDOverlay ───────────────────────────────────────────────────────────
       - name: Create HUDOverlay.swift
         run: |
-          cat > GameHub/Sources/HUDOverlay.swift << 'SWIFT_EOF'
+          cat << 'EOF' > GameHub/Sources/HUDOverlay.swift
           import UIKit
           class HUDOverlay: UIView {
               private let hpBg      = UIView()
@@ -381,12 +379,12 @@ jobs:
                   }
               }
           }
-          SWIFT_EOF
+          EOF
 
       # ── EnemyNode ────────────────────────────────────────────────────────────
       - name: Create EnemyNode.swift
         run: |
-          cat > GameHub/Sources/EnemyNode.swift << 'SWIFT_EOF'
+          cat << 'EOF' > GameHub/Sources/EnemyNode.swift
           import SceneKit
           import UIKit
           class EnemyNode: SCNNode {
@@ -500,12 +498,12 @@ jobs:
                   return t - lastAttackTime >= kind.attackInterval
               }
           }
-          SW_EOF
+          EOF
 
       # ── GameViewController ──────────────────────────────────────────────────
       - name: Create GameViewController.swift
         run: |
-          cat > GameHub/Sources/GameViewController.swift << 'SWIFT_EOF'
+          cat << 'EOF' > GameHub/Sources/GameViewController.swift
           import UIKit
           import SceneKit
 
@@ -620,7 +618,7 @@ jobs:
                   playerNode.position = SCNVector3(0, 0.85, 0)
                   
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: capsule, options: nil))
-                  pBody.allowsResting = true // এরর দূর করতে ফিক্সড করা হয়েছে
+                  pBody.allowsResting = true
                   pBody.angularVelocityFactor = SCNVector3(0, 1, 0)
                   pBody.categoryBitMask = PhysicsMask.player
                   pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground | PhysicsMask.enemy
@@ -810,12 +808,12 @@ jobs:
                   }
               }
           }
-          SWIFT_EOF
+          EOF
 
       # ── Project Configuration & Build System ─────────────────────────────────
       - name: Create project.yml
         run: |
-          cat > project.yml << 'EOF'
+          cat << 'EOF' > project.yml
           name: GameHub
           options:
             bundleIdPrefix: com.shadowvillage.game
@@ -840,7 +838,7 @@ jobs:
 
       - name: Create Info.plist
         run: |
-          cat > GameHub/Info.plist << 'EOF'
+          cat << 'EOF' > GameHub/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
