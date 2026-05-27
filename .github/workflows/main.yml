@@ -80,11 +80,7 @@ jobs:
                       GCInputButtonA,
                       GCInputButtonB,
                       GCInputButtonX,
-                      GCInputButtonY,
-                      GCInputLeftShoulder,
-                      GCInputRightShoulder,
-                      GCInputLeftTrigger,
-                      GCInputRightTrigger
+                      GCInputButtonY
                   ]
                   
                   gcController = GCVirtualController(configuration: config)
@@ -116,11 +112,7 @@ jobs:
                       "Cross": controller.buttonA,
                       "Circle": controller.buttonB,
                       "Square": controller.buttonX,
-                      "Triangle": controller.buttonY,
-                      "L1": controller.leftShoulder,
-                      "R1": controller.rightShoulder,
-                      "L2": controller.leftTrigger,
-                      "R2": controller.rightTrigger
+                      "Triangle": controller.buttonY
                   ]
                   
                   for (name, buttonInput) in buttonMap {
@@ -157,20 +149,6 @@ jobs:
                   let player = try? engine.makePlayer(with: pattern)
                   try? player?.start(atTime: CHHapticTimeImmediate)
               }
-              
-              func xinputToWineVK(_ button: String) -> UInt32 {
-                  let map: [String: UInt32] = [
-                      "Cross": 0x58,
-                      "Circle": 0x42,
-                      "Square": 0x41,
-                      "Triangle": 0x59,
-                      "L1": 0x51,
-                      "R1": 0x45,
-                      "L2": 0x4C,
-                      "R2": 0x52,
-                  ]
-                  return map[button] ?? 0
-              }
           }
           EOF
 
@@ -186,7 +164,6 @@ jobs:
               static let bullet: Int = 1 << 2
               static let wall:   Int = 1 << 3
               static let ground: Int = 1 << 4
-              static let item:   Int = 1 << 5
           }
           enum EnemyKind {
               case walker, brute, runner, cultist, boss
@@ -201,11 +178,11 @@ jobs:
               }
               var speed: Float {
                   switch self {
-                  case .walker:  return 2.2
-                  case .brute:   return 1.1
-                  case .runner:  return 4.5
-                  case .cultist: return 1.8
-                  case .boss:    return 1.6
+                  case .walker:  return 2.5
+                  case .brute:   return 1.3
+                  case .runner:  return 4.8
+                  case .cultist: return 2.0
+                  case .boss:    return 1.8
                   }
               }
               var damage: Float {
@@ -219,11 +196,11 @@ jobs:
               }
               var attackRange: Float {
                   switch self {
-                  case .walker:  return 1.0
-                  case .brute:   return 1.4
+                  case .walker:  return 1.1
+                  case .brute:   return 1.5
                   case .runner:  return 0.9
-                  case .cultist: return 1.0
-                  case .boss:    return 2.0
+                  case .cultist: return 1.1
+                  case .boss:    return 2.2
                   }
               }
               var scoreValue: Int {
@@ -248,11 +225,11 @@ jobs:
               var height: Float { return radius * 4.0 }
               var bodyColor: UIColor {
                   switch self {
-                  case .walker:  return UIColor(red: 0.50, green: 0.28, blue: 0.18, alpha: 1)
-                  case .brute:   return UIColor(red: 0.40, green: 0.10, blue: 0.08, alpha: 1)
-                  case .runner:  return UIColor(red: 0.55, green: 0.12, blue: 0.50, alpha: 1)
-                  case .cultist: return UIColor(red: 0.22, green: 0.00, blue: 0.28, alpha: 1)
-                  case .boss:    return UIColor(red: 0.70, green: 0.00, blue: 0.00, alpha: 1)
+                  case .walker:  return UIColor(red: 0.45, green: 0.25, blue: 0.15, alpha: 1)
+                  case .brute:   return UIColor(red: 0.35, green: 0.08, blue: 0.06, alpha: 1)
+                  case .runner:  return UIColor(red: 0.50, green: 0.10, blue: 0.45, alpha: 1)
+                  case .cultist: return UIColor(red: 0.18, green: 0.00, blue: 0.25, alpha: 1)
+                  case .boss:    return UIColor(red: 0.60, green: 0.00, blue: 0.00, alpha: 1)
                   }
               }
           }
@@ -270,17 +247,21 @@ jobs:
               private let scoreLbl  = UILabel()
               private let waveLbl   = UILabel()
               private let msgLbl    = UILabel()
-              private let reloadLbl = UILabel()
+              let renewBtn  = UIButton(type: .system)
               let barW: CGFloat = 220
+              
+              var onRenewPressed: (() -> Void)?
+
               override init(frame: CGRect) {
                   super.init(frame: frame)
-                  isUserInteractionEnabled = false
                   buildUI()
               }
               required init?(coder: NSCoder) { fatalError() }
+              
               private func customFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
                   return bold ? UIFont.systemFont(ofSize: size, weight: .bold) : UIFont.systemFont(ofSize: size, weight: .regular)
               }
+              
               private func buildUI() {
                   hpBg.frame            = CGRect(x: 20, y: 20, width: barW + 4, height: 14)
                   hpBg.backgroundColor  = UIColor(white: 0.05, alpha: 0.6)
@@ -288,39 +269,36 @@ jobs:
                   hpBg.layer.borderColor = UIColor(white: 1.0, alpha: 0.15).cgColor
                   hpBg.layer.borderWidth = 1
                   addSubview(hpBg)
+                  
                   hpBar.frame             = CGRect(x: 22, y: 22, width: barW, height: 10)
                   hpBar.backgroundColor   = UIColor(red: 0.00, green: 0.90, blue: 0.45, alpha: 1.0)
                   hpBar.layer.cornerRadius = 5
                   addSubview(hpBar)
+                  
                   scoreLbl.frame            = CGRect(x: bounds.width - 240, y: 20, width: 220, height: 26)
                   scoreLbl.autoresizingMask = [.flexibleLeftMargin]
                   scoreLbl.text             = "SCORE // 000000"
-                  scoreLbl.textColor        = UIColor(white: 0.95, alpha: 1.0)
+                  scoreLbl.textColor        = UIColor(white: 0.85, alpha: 1.0)
                   scoreLbl.font             = customFont(16, bold: true)
                   scoreLbl.textAlignment    = .right
                   addSubview(scoreLbl)
+                  
                   waveLbl.frame            = CGRect(x: 0, y: 20, width: bounds.width, height: 26)
                   waveLbl.autoresizingMask = [.flexibleWidth]
                   waveLbl.text             = "PHASE 00"
-                  waveLbl.textColor        = UIColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1.0)
+                  waveLbl.textColor        = UIColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1.0)
                   waveLbl.font             = customFont(15, bold: true)
                   waveLbl.textAlignment    = .center
                   addSubview(waveLbl)
+                  
                   ammoLbl.frame            = CGRect(x: bounds.width - 200, y: bounds.height - 65, width: 180, height: 45)
                   ammoLbl.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  ammoLbl.text             = "30 / 90"
-                  ammoLbl.textColor        = .white
-                  ammoLbl.font             = customFont(32, bold: true)
+                  ammoLbl.text             = "AMMO: ∞"
+                  ammoLbl.textColor        = UIColor(red: 0.0, green: 1.0, blue: 0.8, alpha: 1.0)
+                  ammoLbl.font             = customFont(28, bold: true)
                   ammoLbl.textAlignment    = .right
                   addSubview(ammoLbl)
-                  reloadLbl.frame            = CGRect(x: bounds.width - 200, y: bounds.height - 95, width: 180, height: 26)
-                  reloadLbl.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  reloadLbl.text             = "RECHARGING WEAPON"
-                  reloadLbl.textColor        = UIColor(red: 1.0, green: 0.60, blue: 0.00, alpha: 1)
-                  reloadLbl.font             = customFont(12, bold: true)
-                  reloadLbl.textAlignment    = .right
-                  reloadLbl.isHidden         = true
-                  addSubview(reloadLbl)
+                  
                   msgLbl.frame            = CGRect(x: 0, y: bounds.height * 0.35, width: bounds.width, height: 50)
                   msgLbl.autoresizingMask = [.flexibleWidth, .flexibleTopMargin, .flexibleBottomMargin]
                   msgLbl.textColor        = .white
@@ -328,12 +306,30 @@ jobs:
                   msgLbl.textAlignment    = .center
                   msgLbl.alpha            = 0
                   addSubview(msgLbl)
+                  
+                  // RENEW BUTTON Setup
+                  renewBtn.frame = CGRect(x: bounds.width/2 - 100, y: bounds.height * 0.55, width: 200, height: 50)
+                  renewBtn.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin, .flexibleTopMargin, .flexibleBottomMargin]
+                  renewBtn.setTitle("RENEW SYSTEM (RESTART)", for: .normal)
+                  renewBtn.titleLabel?.font = customFont(14, bold: true)
+                  renewBtn.setTitleColor(.black, for: .normal)
+                  renewBtn.backgroundColor = UIColor(red: 0.0, green: 1.0, blue: 0.5, alpha: 1.0)
+                  renewBtn.layer.cornerRadius = 8
+                  renewBtn.isHidden = true
+                  renewBtn.addTarget(self, action: #selector(renewTapped), for: .touchUpInside)
+                  addSubview(renewBtn)
+                  
                   addSubview(makeCrosshair())
               }
+              
+              @objc private func renewTapped() {
+                  onRenewPressed?()
+              }
+              
               private func makeCrosshair() -> UIView {
-                  let s: CGFloat = 16, g: CGFloat = 4, t: CGFloat = 1.5
+                  let s: CGFloat = 14, g: CGFloat = 4, t: CGFloat = 1.5
                   let w = bounds.width / 2, h = bounds.height / 2
-                  let col = UIColor(red: 0.0, green: 1.0, blue: 1.0, alpha: 0.9)
+                  let col = UIColor(red: 0.0, green: 0.8, blue: 0.8, alpha: 0.7)
                   let container = UIView(frame: bounds)
                   container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   container.isUserInteractionEnabled = false
@@ -348,35 +344,39 @@ jobs:
                   container.addSubview(bar(CGRect(x: w - t / 2,     y: h + g / 2, width: t, height: s)))
                   return container
               }
-              func update(health: Float, maxHealth: Float, ammo: Int,
-                          totalAmmo: Int, score: Int, wave: Int, isReloading: Bool) {
+              
+              func update(health: Float, maxHealth: Float, score: Int, wave: Int) {
                   let ratio = CGFloat(max(0, health / maxHealth))
                   UIView.animate(withDuration: 0.15) { self.hpBar.frame.size.width = self.barW * ratio }
                   hpBar.backgroundColor = ratio > 0.5 
-                      ? UIColor(red: 0.00, green: 0.90, blue: 0.45, alpha: 1.0)
+                      ? UIColor(red: 0.00, green: 0.85, blue: 0.40, alpha: 1.0)
                       : ratio > 0.25 
-                      ? UIColor(red: 1.00, green: 0.65, blue: 0.00, alpha: 1.0)
-                      : UIColor(red: 1.00, green: 0.15, blue: 0.15, alpha: 1.0)
+                      ? UIColor(red: 0.95, green: 0.60, blue: 0.00, alpha: 1.0)
+                      : UIColor(red: 0.95, green: 0.10, blue: 0.10, alpha: 1.0)
                   
-                  ammoLbl.text      = "\(ammo) / \(totalAmmo)"
-                  ammoLbl.textColor = ammo == 0 ? .red : ammo <= 5 ? .orange : .white
                   scoreLbl.text     = String(format: "SCORE // %06d", score)
                   waveLbl.text      = String(format: "PHASE %02d", wave)
-                  reloadLbl.isHidden = !isReloading
               }
+              
               func showMessage(_ text: String, color: UIColor = .white, duration: TimeInterval = 2.0) {
                   msgLbl.text      = text.uppercased()
                   msgLbl.textColor = color
                   msgLbl.alpha     = 0
-                  msgLbl.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+                  msgLbl.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
                   UIView.animate(withDuration: 0.2) {
                       self.msgLbl.alpha     = 1
                       self.msgLbl.transform = .identity
                   } completion: { _ in
-                      UIView.animate(withDuration: 0.3, delay: duration - 0.3) {
-                          self.msgLbl.alpha = 0
+                      if duration > 0 {
+                          UIView.animate(withDuration: 0.3, delay: duration - 0.3) {
+                              self.msgLbl.alpha = 0
+                          }
                       }
                   }
+              }
+              
+              func clearMessage() {
+                  msgLbl.alpha = 0
               }
           }
           EOF
@@ -434,10 +434,6 @@ jobs:
                           SCNAction.rotateBy(x: 0, y: .pi * 2, z: 0, duration: 2.5)
                       ))
                       addChildNode(crownNode)
-                      bodyMeshNode.runAction(SCNAction.repeatForever(SCNAction.sequence([
-                          SCNAction.scale(to: 1.06, duration: 0.5),
-                          SCNAction.scale(to: 0.94, duration: 0.5)
-                      ])))
                   }
               }
               private func buildPhysics() {
@@ -523,13 +519,8 @@ jobs:
               private let maxPlayerHP: Float = 100.0
               private var isGameOver = false
               
-              private var currentAmmo = 30
-              private let maxAmmo = 30
-              private var totalReserveAmmo = 90
-              private var isReloading = false
               private var lastFireTime: TimeInterval = 0
-              private let fireRate: TimeInterval = 0.18
-              
+              private let fireRate: TimeInterval = 0.15
               private var lastUpdateTime: TimeInterval = 0
               private let input = ControllerInput.shared
               
@@ -563,27 +554,29 @@ jobs:
               }
               
               private func setupWorld() {
+                  // এনভায়রনমেন্ট ডার্ক অ্যান্ড সিনেমাটিক করার জন্য আলোর তীব্রতা কমানো হয়েছে (Baked Ambient Mode)
                   let ambLight = SCNLight()
                   ambLight.type = .ambient
-                  ambLight.color = UIColor(white: 0.15, alpha: 1.0)
+                  ambLight.color = UIColor(white: 0.06, alpha: 1.0) 
                   let ambNode = SCNNode()
                   ambNode.light = ambLight
                   scene.rootNode.addChildNode(ambNode)
                   
                   let dirLight = SCNLight()
                   dirLight.type = .directional
-                  dirLight.color = UIColor(red: 0.4, green: 0.4, blue: 0.6, alpha: 1.0)
+                  dirLight.color = UIColor(red: 0.25, green: 0.25, blue: 0.40, alpha: 1.0) 
+                  dirLight.intensity = 400
                   dirLight.castsShadow = true
                   let dirNode = SCNNode()
                   dirNode.light = dirLight
-                  dirNode.position = SCNVector3(15, 30, 15)
+                  dirNode.position = SCNVector3(12, 25, 12)
                   dirNode.look(at: SCNVector3(0, 0, 0))
                   scene.rootNode.addChildNode(dirNode)
                   
                   let floorGeo = SCNFloor()
-                  floorGeo.reflectivity = 0.1
+                  floorGeo.reflectivity = 0.05
                   let floorMat = SCNMaterial()
-                  floorMat.diffuse.contents = UIColor(white: 0.12, alpha: 1.0)
+                  floorMat.diffuse.contents = UIColor(white: 0.08, alpha: 1.0)
                   floorGeo.materials = [floorMat]
                   let floorNode = SCNNode(geometry: floorGeo)
                   floorNode.physicsBody = SCNPhysicsBody(type: .static, shape: nil)
@@ -592,7 +585,7 @@ jobs:
                   
                   let wallGeo = SCNBox(width: 44, height: 6, length: 2, chamferRadius: 0)
                   let wallMat = SCNMaterial()
-                  wallMat.diffuse.contents = UIColor(white: 0.2, alpha: 1.0)
+                  wallMat.diffuse.contents = UIColor(white: 0.15, alpha: 1.0)
                   wallGeo.materials = [wallMat]
                   
                   let northWall = SCNNode(geometry: wallGeo)
@@ -656,30 +649,38 @@ jobs:
               private func setupHUD() {
                   hud = HUDOverlay(frame: view.bounds)
                   hud.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                  hud.onRenewPressed = { [weak self] in
+                      self?.renewGame()
+                  }
                   view.addSubview(hud)
                   refreshHUD()
               }
               
               func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-                  if isGameOver { return }
+                  if isGameOver { 
+                      if input.pressedButtons.contains("Cross") {
+                          DispatchQueue.main.async { [weak self] in self?.renewGame() }
+                      }
+                      return 
+                  }
                   
                   if lastUpdateTime == 0 { lastUpdateTime = time }
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
+                  // কন্ট্রোলার মুভমেন্ট ডিরেক্ট ট্রান্সফর্ম পজিশন ফিক্স
                   let lStick = input.leftStick
                   if lStick != .zero {
-                      let spd: Float = 6.2
-                      let velX = Float(lStick.x) * spd
-                      let velZ = -Float(lStick.y) * spd
-                      playerNode.physicsBody?.velocity = SCNVector3(velX, playerNode.physicsBody?.velocity.y ?? 0, velZ)
+                      let speedMultiplier: Float = 6.5
+                      let dx = Float(lStick.x) * speedMultiplier * dt
+                      let dz = -Float(lStick.y) * speedMultiplier * dt
+                      
+                      playerNode.position.x += dx
+                      playerNode.position.z += dz
                       
                       if input.rightStick == .zero {
-                          playerNode.eulerAngles.y = atan2(-velX, -velZ)
+                          playerNode.eulerAngles.y = atan2(-Float(lStick.x), Float(lStick.y))
                       }
-                  } else {
-                      playerNode.physicsBody?.velocity.x = 0
-                      playerNode.physicsBody?.velocity.z = 0
                   }
                   
                   let rStick = input.rightStick
@@ -689,10 +690,6 @@ jobs:
                           lastFireTime = time
                           executeShoot()
                       }
-                  }
-                  
-                  if input.pressedButtons.contains("Cross") && !isReloading && currentAmmo < maxAmmo {
-                      triggerWeaponReload()
                   }
                   
                   let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 14, playerNode.position.z + 9)
@@ -710,20 +707,12 @@ jobs:
                       }
                   }
                   
-                  if enemies.isEmpty && !isReloading {
+                  if enemies.isEmpty {
                       DispatchQueue.main.async { [weak self] in self?.startNextWave() }
                   }
               }
               
               private func executeShoot() {
-                  if isReloading || currentAmmo <= 0 {
-                      if currentAmmo == 0 && !isReloading { triggerWeaponReload() }
-                      return
-                  }
-                  
-                  currentAmmo -= 1
-                  DispatchQueue.main.async { [weak self] in self?.refreshHUD() }
-                  
                   let bGeo = SCNSphere(radius: 0.12)
                   let bMat = SCNMaterial()
                   bMat.diffuse.contents = UIColor.orange
@@ -744,28 +733,12 @@ jobs:
                   scene.rootNode.addChildNode(bullet)
                   
                   let angle = playerNode.eulerAngles.y
-                  let forceMag: Float = 24.0
+                  let forceMag: Float = 26.0
                   let fx = -sin(angle) * forceMag
                   let fz = -cos(angle) * forceMag
                   bBody.velocity = SCNVector3(fx, 0, fz)
                   
-                  bullet.runAction(SCNAction.sequence([SCNAction.wait(duration: 1.8), SCNAction.removeFromParentNode()]))
-              }
-              
-              private func triggerWeaponReload() {
-                  guard !isReloading && totalReserveAmmo > 0 else { return }
-                  isReloading = true
-                  DispatchQueue.main.async { [weak self] in self?.refreshHUD() }
-                  
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                      guard let self = self else { return }
-                      let needed = self.maxAmmo - self.currentAmmo
-                      let shared = min(needed, self.totalReserveAmmo)
-                      self.currentAmmo += shared
-                      self.totalReserveAmmo -= shared
-                      self.isReloading = false
-                      self.refreshHUD()
-                  }
+                  bullet.runAction(SCNAction.sequence([SCNAction.wait(duration: 1.5), SCNAction.removeFromParentNode()]))
               }
               
               private func inflictDamageToPlayer(_ amount: Float) {
@@ -778,12 +751,34 @@ jobs:
               }
               
               private func refreshHUD() {
-                  hud.update(health: playerHP, maxHealth: maxPlayerHP, ammo: currentAmmo, totalAmmo: totalReserveAmmo, score: score, wave: currentWave, isReloading: isReloading)
+                  hud.update(health: playerHP, maxHealth: maxPlayerHP, score: score, wave: currentWave)
               }
               
               private func triggerGameOver() {
-                  hud.showMessage("SQUAD WIPED // GAME OVER", color: .red, duration: 6.0)
-                  playerNode.runAction(SCNAction.fadeOut(duration: 0.5))
+                  hud.showMessage("SQUAD WIPED // SYSTEM TERMINATED", color: .red, duration: 0)
+                  hud.renewBtn.isHidden = false
+                  playerNode.runAction(SCNAction.fadeOut(duration: 0.3))
+              }
+              
+              private func renewGame() {
+                  isGameOver = false
+                  playerHP = maxPlayerHP
+                  score = 0
+                  currentWave = 0
+                  
+                  for enemy in enemies {
+                      enemy.removeFromParentNode()
+                  }
+                  enemies.removeAll()
+                  
+                  playerNode.position = SCNVector3(0, 0.85, 0)
+                  playerNode.opacity = 1.0
+                  
+                  hud.renewBtn.isHidden = true
+                  hud.clearMessage()
+                  refreshHUD()
+                  
+                  startNextWave()
               }
               
               func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
@@ -906,7 +901,7 @@ jobs:
           cd build/IPA_Structure
           zip -q -r ../ShadowVillage3D.ipa Payload
           cd ../..
-          echo "=== IPA GENERATED WITH MAIN MENU & GAMEPAD SUPPORT ==="
+          echo "=== IPA GENERATED WITH RENEW SYSTEM & INFINITE AMMO ==="
 
       - name: Upload Artifact & Generate Direct Download Link
         uses: actions/upload-artifact@v4
@@ -914,3 +909,4 @@ jobs:
           name: ShadowVillage3D-iOS-IPA
           path: build/ShadowVillage3D.ipa
           retention-days: 7
+          
