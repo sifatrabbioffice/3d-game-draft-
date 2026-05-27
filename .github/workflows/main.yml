@@ -253,7 +253,7 @@ jobs:
 
                   waveLbl.frame            = CGRect(x: 0, y: 20, width: bounds.width, height: 26)
                   waveLbl.autoresizingMask = [.flexibleWidth]
-                  waveLbl.text             = "PHASE 01"
+                  waveLbl.text             = "PHASE 00"
                   waveLbl.textColor        = UIColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1.0)
                   waveLbl.font             = customFont(15, bold: true)
                   waveLbl.textAlignment    = .center
@@ -478,6 +478,7 @@ jobs:
           cat > SV3D/Sources/GameViewController.swift << 'SWIFT_EOF'
           import UIKit
           import SceneKit
+          import GameController // PS4 গেমপ্যাড সাপোর্ট ইমপোর্ট করা হলো
 
           class GameViewController: UIViewController, SCNSceneRendererDelegate, SCNPhysicsContactDelegate {
 
@@ -489,28 +490,37 @@ jobs:
               private var cameraArm:  SCNNode!
               private var cameraNode: SCNNode!
 
-              private var health      : Float        = 100
-              private var maxHealth   : Float        = 100
-              private var ammo        : Int          = 30
-              private var totalAmmo   : Int          = 90
-              private var score       : Int          = 0
-              private var wave        : Int          = 0
-              private var isReloading : Bool         = false
-              private var canShoot    : Bool         = true
-              private var isGameOver  : Bool         = false
-              private var waveActive  : Bool         = false
-              private var bossSpawned : Bool         = false
-              private var waveTimer   : TimeInterval = 3.0
-              private var lastTime    : TimeInterval = 0
-              private var enemies     : [EnemyNode]  = []
-              private var bullets     : [SCNNode]    = []
-              private var lastShotTime: TimeInterval = 0
+              // গেম স্টেট ভেরিয়েবল
+              private var isGameStarted: Bool         = false // স্টার্ট পেজের জন্য ফ্ল্যাগ
+              private var health       : Float        = 100
+              private var maxHealth    : Float        = 100
+              private var ammo         : Int          = 30
+              private var totalAmmo    : Int          = 90
+              private var score        : Int          = 0
+              private var wave         : Int          = 0
+              private var isReloading  : Bool         = false
+              private var canShoot     : Bool         = true
+              private var isGameOver   : Bool         = false
+              private var waveActive   : Bool         = false
+              private var bossSpawned  : Bool         = false
+              private var waveTimer    : TimeInterval = 3.0
+              private var lastTime     : TimeInterval = 0
+              private var enemies      : [EnemyNode]  = []
+              private var bullets      : [SCNNode]    = []
+              private var lastShotTime : TimeInterval = 0
 
-              private var moveJoystick: JoystickView!
-              private var aimJoystick:  JoystickView!
-              private var hudView:      HUDOverlay!
-              private var cameraYaw:    Float   = 0
-              private let cameraPitch:  Float   = -0.22
+              // UI কন্ট্রোল এলিমেন্ট
+              private var startOverlay : UIView!      // মেইন স্টার্ট পেজ ভিউ
+              private var moveJoystick : JoystickView!
+              private var aimJoystick  : JoystickView!
+              private var hudView      : HUDOverlay!
+              private var cameraYaw    : Float   = 0
+              private let cameraPitch  : Float   = -0.22
+
+              // গেমপ্যাড স্টেট রিডিং ভেরিয়েবলস
+              private var hardwareMoveVector: SIMD2<Float> = .zero
+              private var hardwareAimVector : SIMD2<Float> = .zero
+              private var isGamepadConnected: Bool = false
 
               private let mapHalf: Float = 30.0
 
@@ -523,16 +533,135 @@ jobs:
                   setupLighting()
                   setupHUD()
                   setupJoysticks()
-                  waveTimer = 3.0
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                      self?.hudView.showMessage("INCOMING ANOMALY DETECTED", color: .red, duration: 2.5)
-                  }
+                  setupStartScreen()     // স্টার্ট পেজ লোড করা হলো
+                  setupGamepadObservers() // ফিজিক্যাল কন্ট্রোলার লিসেনার অ্যাক্টিভেট করা হলো
               }
 
               override var prefersStatusBarHidden: Bool { return true }
               override var shouldAutorotate: Bool { return true }
               override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .landscape }
               override var prefersHomeIndicatorAutoHidden: Bool { return true }
+
+              // ── Start Screen UI Setup ──────────────────────────────────────────
+              private func setupStartScreen() {
+                  startOverlay = UIView(frame: view.bounds)
+                  startOverlay.backgroundColor = UIColor(red: 0.04, green: 0.03, blue: 0.08, alpha: 0.95)
+                  startOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+                  let titleLabel = UILabel()
+                  titleLabel.text = "SHADOW VILLAGE 3D"
+                  titleLabel.textColor = UIColor(red: 1.0, green: 0.0, blue: 0.4, alpha: 1.0)
+                  titleLabel.font = UIFont.systemFont(ofSize: 42, weight: .bold)
+                  titleLabel.textAlignment = .center
+                  titleLabel.frame = CGRect(x: 0, y: view.bounds.height * 0.25, width: view.bounds.width, height: 60)
+                  titleLabel.autoresizingMask = [.flexibleWidth, .flexibleBottomMargin]
+                  startOverlay.addSubview(titleLabel)
+
+                  let subTitleLabel = UILabel()
+                  subTitleLabel.text = "[ CONNECT PS4 CONTROLLER OR USE TOUCH ]"
+                  subTitleLabel.textColor = UIColor.cyan.withAlphaComponent(0.7)
+                  subTitleLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+                  subTitleLabel.textAlignment = .center
+                  subTitleLabel.frame = CGRect(x: 0, y: view.bounds.height * 0.38, width: view.bounds.width, height: 25)
+                  subTitleLabel.autoresizingMask = [.flexibleWidth, .flexibleBottomMargin]
+                  startOverlay.addSubview(subTitleLabel)
+
+                  let startButton = UIButton(type: .custom)
+                  startButton.setTitle("INITIALIZE SYSTEM", for: .normal)
+                  startButton.setTitleColor(.white, for: .normal)
+                  startButton.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .bold)
+                  startButton.backgroundColor = UIColor.cyan.withAlphaComponent(0.2)
+                  startButton.layer.borderColor = UIColor.cyan.cgColor
+                  startButton.layer.borderWidth = 2
+                  startButton.layer.cornerRadius = 8
+                  startButton.frame = CGRect(x: (view.bounds.width - 240)/2, y: view.bounds.height * 0.55, width: 240, height: 55)
+                  startButton.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin, .flexibleTopMargin, .flexibleBottomMargin]
+                  startButton.addTarget(self, action: #selector(startGameButtonPressed), for: .touchUpInside)
+                  startOverlay.addSubview(startButton)
+
+                  view.addSubview(startOverlay)
+                  hudView.isHidden = true
+                  moveJoystick.isHidden = true
+                  aimJoystick.isHidden = true
+              }
+
+              @objc private func startGameButtonPressed() {
+                  guard !isGameStarted else { return }
+                  isGameStarted = true
+                  
+                  UIView.animate(withDuration: 0.4, animations: {
+                      self.startOverlay.alpha = 0
+                  }) { _ in
+                      self.startOverlay.removeFromSuperview()
+                      self.hudView.isHidden = false
+                      // গেমপ্যাড কানেক্টেড থাকলে অন-স্ক্রিন টাচ কন্ট্রোল হাইড থাকবে
+                      if !self.isGamepadConnected {
+                          self.moveJoystick.isHidden = false
+                          self.aimJoystick.isHidden = false
+                      }
+                      self.waveTimer = 3.0
+                      self.hudView.showMessage("INCOMING ANOMALY DETECTED", color: .red, duration: 2.5)
+                  }
+              }
+
+              // ── GameController Framework Integration (PS4/MFi Support) ─────────
+              private func setupGamepadObservers() {
+                  NotificationCenter.default.addObserver(self, selector: #selector(gamepadDidConnect(_:)), name: .GCControllerDidConnect, object: nil)
+                  NotificationCenter.default.addObserver(self, selector: #selector(gamepadDidDisconnect(_:)), name: .GCControllerDidDisconnect, object: nil)
+                  
+                  if let controller = GCController.controllers().first {
+                      configureGamepadInput(controller)
+                  }
+              }
+
+              @objc private func gamepadDidConnect(_ notification: Notification) {
+                  if let controller = notification.object as? GCController {
+                      configureGamepadInput(controller)
+                  }
+              }
+
+              @objc private func gamepadDidDisconnect(_ notification: Notification) {
+                  isGamepadConnected = false
+                  DispatchQueue.main.async {
+                      if self.isGameStarted {
+                          self.moveJoystick.isHidden = false
+                          self.aimJoystick.isHidden = false
+                      }
+                  }
+              }
+
+              private func configureGamepadInput(_ controller: GCController) {
+                  isGamepadConnected = true
+                  DispatchQueue.main.async {
+                      if self.isGameStarted {
+                          self.moveJoystick.isHidden = true
+                          self.aimJoystick.isHidden = true
+                      }
+                  }
+
+                  // Extended Gamepad profile (PS4, Xbox, MFi গেমপ্যাড রিড করার জন্য)
+                  if let gamepad = controller.extendedGamepad {
+                      // Left Stick Movement Logic
+                      gamepad.leftThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
+                          // ইনভার্টেড ওয়াই অ্যাক্সিস ফিক্স করতে মাইনাস সাইন
+                          self?.hardwareMoveVector = SIMD2<Float>(x, -y)
+                      }
+
+                      // Right Stick Aim & Shoot Logic
+                      gamepad.rightThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
+                          self?.hardwareAimVector = SIMD2<Float>(x, -y)
+                      }
+
+                      // PS4 Cross বাটন / A বাটন প্রেস করে স্টার্ট পেজ স্কিপ করার ফিচার
+                      gamepad.buttonA.pressedChangedHandler = { [weak self] (_, _, isPressed) in
+                          if isPressed && !(self?.isGameStarted ?? true) {
+                              DispatchQueue.main.async {
+                                  self?.startGameButtonPressed()
+                              }
+                          }
+                      }
+                  }
+              }
 
               private func setupScene() {
                   scnView = SCNView(frame: view.bounds)
@@ -700,6 +829,7 @@ jobs:
               }
 
               override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+                  guard isGameStarted && !isGamepadConnected else { return }
                   for touch in touches {
                       let pt = touch.location(in: view)
                       if pt.x < view.bounds.width / 2 {
@@ -735,7 +865,8 @@ jobs:
                   let dt = Float(min(time - lastTime, 1.0 / 30.0))
                   lastTime = time
 
-                  guard !isGameOver else { return }
+                  // গেম স্টার্ট না হলে বা ওভার হয়ে গেলে ফ্রেম আপডেট থমকে থাকবে
+                  guard isGameStarted && !isGameOver else { return }
 
                   handleMovement(dt: dt)
                   handleAimAndFiring(time: time)
@@ -747,8 +878,12 @@ jobs:
               private func handleMovement(dt: Float) {
                   guard let pBody = playerNode.physicsBody else { return }
                   
-                  if moveJoystick.isActive {
-                      let vel = moveJoystick.velocity
+                  // ফিজিক্যাল এবং ভার্চুয়াল জয়স্টিকের ডেটা কম্বাইন করা হচ্ছে
+                  let moveX = isGamepadConnected ? hardwareMoveVector.x : moveJoystick.velocity.x
+                  let moveZ = isGamepadConnected ? hardwareMoveVector.y : moveJoystick.velocity.y
+                  let isActive = isGamepadConnected ? (unsupportedLength(hardwareMoveVector) > 0.15) : moveJoystick.isActive
+                  
+                  if isActive {
                       let speedMultiplier: Float = 5.5
                       
                       let forwardX = sin(cameraYaw)
@@ -756,13 +891,14 @@ jobs:
                       let rightX = sin(cameraYaw + .pi/2)
                       let rightZ = cos(cameraYaw + .pi/2)
                       
-                      let moveX = (rightX * vel.x) + (forwardX * vel.y)
-                      let moveZ = (rightZ * vel.x) + (forwardZ * vel.y)
+                      let computedX = (rightX * moveX) + (forwardX * moveZ)
+                      let computedZ = (rightZ * moveX) + (forwardZ * moveZ)
                       
-                      pBody.velocity = SCNVector3(moveX * speedMultiplier, pBody.velocity.y, moveZ * speedMultiplier)
+                      pBody.velocity = SCNVector3(computedX * speedMultiplier, pBody.velocity.y, computedZ * speedMultiplier)
                       
-                      if !aimJoystick.isActive {
-                          playerBody.eulerAngles.y = atan2(moveX, moveZ)
+                      let isAimActive = isGamepadConnected ? (unsupportedLength(hardwareAimVector) > 0.15) : aimJoystick.isActive
+                      if !isAimActive {
+                          playerBody.eulerAngles.y = atan2(computedX, computedZ)
                       }
                   } else {
                       pBody.velocity = SCNVector3(0, pBody.velocity.y, 0)
@@ -770,16 +906,18 @@ jobs:
               }
 
               private func handleAimAndFiring(time: TimeInterval) {
-                  if aimJoystick.isActive {
-                      let av = aimJoystick.velocity
-                      
+                  let aimX = isGamepadConnected ? hardwareAimVector.x : aimJoystick.velocity.x
+                  let aimZ = isGamepadConnected ? hardwareAimVector.y : aimJoystick.velocity.y
+                  let isActive = isGamepadConnected ? (unsupportedLength(hardwareAimVector) > 0.15) : aimJoystick.isActive
+                  
+                  if isActive {
                       let forwardX = sin(cameraYaw)
                       let forwardZ = cos(cameraYaw)
                       let rightX = sin(cameraYaw + .pi/2)
                       let rightZ = cos(cameraYaw + .pi/2)
                       
-                      let worldAimX = (rightX * av.x) + (forwardX * av.y)
-                      let worldAimZ = (rightZ * av.x) + (forwardZ * av.y)
+                      let worldAimX = (rightX * aimX) + (forwardX * aimZ)
+                      let worldAimZ = (rightZ * aimX) + (forwardZ * aimZ)
                       
                       playerBody.eulerAngles.y = atan2(worldAimX, worldAimZ)
                       
@@ -788,6 +926,10 @@ jobs:
                           lastShotTime = time
                       }
                   }
+              }
+
+              private func unsupportedLength(_ v: SIMD2<Float>) -> Float {
+                  return sqrt(v.x * v.x + v.y * v.y)
               }
 
               private func fireBullet(direction: SCNVector3) {
@@ -929,12 +1071,13 @@ jobs:
               }
 
               private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  guard let enemyTarget = enemy as? EnemyNode, enemyTarget.isAlive else { return }
+                  let enemyTarget = enemy as? EnemyNode ?? contact.nodeA as? EnemyNode
+                  guard let target = enemyTarget, target.isAlive else { return }
                   bullet.removeFromParentNode()
                   
-                  enemyTarget.takeDamage(34)
-                  if !enemyTarget.isAlive {
-                      score += enemyTarget.kind.scoreValue
+                  target.takeDamage(34)
+                  if !target.isAlive {
+                      score += target.kind.scoreValue
                       DispatchQueue.main.async {
                           self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
                       }
@@ -961,7 +1104,6 @@ jobs:
                   INFOPLIST_FILE: SV3D/Info.plist
                   PRODUCT_BUNDLE_IDENTIFIER: com.shadowvillage.game.sv3d
                   PRODUCT_NAME: SV3D
-                  EXECUTABLE_NAME: SV3D
                   MARKETING_VERSION: "1.0.0"
                   CURRENT_PROJECT_VERSION: "1"
                   TARGETED_DEVICE_FAMILY: "1,2"
@@ -997,6 +1139,9 @@ jobs:
               <array>
                   <string>armv7</string>
                   <string>metal</string>
+                  <array>
+                      <string>gamekit</string>
+                  </array>
               </array>
               <key>UISupportedInterfaceOrientations</key>
               <array>
@@ -1029,7 +1174,7 @@ jobs:
           cd build/IPA_Structure
           zip -q -r ../ShadowVillage3D.ipa Payload
           cd ../..
-          echo "=== IPA STRUCTURE REPAIRED & GENERATED ==="
+          echo "=== IPA GENERATED WITH MAIN MENU & GAMEPAD SUPPORT ==="
 
       - name: Upload Artifact & Generate Direct Download Link
         uses: actions/upload-artifact@v4
