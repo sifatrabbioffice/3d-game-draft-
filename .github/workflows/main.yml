@@ -115,7 +115,7 @@ jobs:
                   baseView.frame = bounds
                   baseView.layer.cornerRadius = radius
                   baseView.backgroundColor = UIColor(white: 1.0, alpha: 0.04)
-                  baseView.layer.borderColor = accentColor.withAlphaComponent(0.25).cgColor
+                  baseView.layer.borderColor = accentColor.withAlphaComponent(0.25).规律 ? accentColor.withAlphaComponent(0.25).cgColor : accentColor.withAlphaComponent(0.25).cgColor
                   baseView.layer.borderWidth = 1.5
                   addSubview(baseView)
                   
@@ -694,41 +694,38 @@ jobs:
                       self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
                   }
 
-                  let bullet = SCNNode(geometry: SCNSphere(radius: 0.12))
-                  bullet.geometry?.firstMaterial?.diffuse.contents = UIColor.magenta
-                  bullet.geometry?.firstMaterial?.lightingModel = .constant
+                  let bulletGeo = SCNSphere(radius: 0.15)
+                  bulletGeo.firstMaterial?.diffuse.contents = UIColor.magenta
+                  bulletGeo.firstMaterial?.emission.contents = UIColor.magenta
                   
-                  let spawnPos = playerNode.position
-                  bullet.position = SCNVector3(spawnPos.x, spawnPos.y + 0.8, spawnPos.z)
-
-                  let len = sqrt(direction.x * direction.x + direction.z * direction.z)
-                  let forceX = (direction.x / len) * 26.0
-                  let forceZ = (direction.z / len) * 26.0
-
-                  let bBody = SCNPhysicsBody(type: .dynamic, shape: nil)
-                  bBody.isAffectedByGravity = false
-                  bBody.categoryBitMask = PhysicsMask.bullet
-                  bBody.contactTestBitMask = PhysicsMask.enemy | PhysicsMask.wall
-                  bBody.collisionBitMask = PhysicsMask.none
-                  bBody.velocity = SCNVector3(forceX, 0, forceZ)
-                  bullet.physicsBody = bBody
-
-                  scene.rootNode.addChildNode(bullet)
-                  bullets.append(bullet)
-
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-                      bullet.removeFromParentNode()
-                      self?.bullets.removeAll(where: { $0 == bullet })
-                  }
+                  let bulletNode = SCNNode(geometry: bulletGeo)
+                  bulletNode.position = SCNVector3(playerNode.position.x, playerNode.position.y + 1.2, playerNode.position.z)
+                  
+                  let pBody = SCNPhysicsBody(type: .dynamic, shape: nil)
+                  pBody.isAffectedByGravity = false
+                  pBody.categoryBitMask = PhysicsMask.bullet
+                  pBody.contactTestBitMask = PhysicsMask.enemy | PhysicsMask.wall
+                  pBody.collisionBitMask = PhysicsMask.none
+                  
+                  let normalizedDir = normalize(direction)
+                  let bSpeed: Float = 24.0
+                  pBody.velocity = SCNVector3(normalizedDir.x * bSpeed, 0, normalizedDir.z * bSpeed)
+                  bulletNode.physicsBody = pBody
+                  
+                  scene.rootNode.addChildNode(bulletNode)
+                  
+                  bulletNode.runAction(.sequence([
+                      .wait(duration: 1.8),
+                      .removeFromParentNode()
+                  ]))
               }
 
               private func performWeaponReload() {
-                  guard !isReloading, totalAmmo > 0 else { return }
+                  guard totalAmmo > 0 else { return }
                   isReloading = true
-                  DispatchQueue.main.async {
-                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                  }
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                  hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
+                  
+                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
                       guard let self = self else { return }
                       let needed = 30 - self.ammo
                       let transfer = min(needed, self.totalAmmo)
@@ -740,12 +737,11 @@ jobs:
               }
 
               private func updateEnemies(dt: Float, time: TimeInterval) {
-                  let pPos = playerNode.position
-                  enemies.removeAll { !$0.isAlive }
-
-                  for enemy in enemies {
-                      enemy.moveToward(target: pPos, dt: dt)
-                      if enemy.distanceTo(pPos) <= enemy.kind.attackRange {
+                  enemies = enemies.filter { $0.parent != nil }
+                  for enemy in enemies where enemy.isAlive {
+                      enemy.moveToward(target: playerNode.position, dt: dt)
+                      
+                      if enemy.distanceTo(playerNode.position) <= enemy.kind.attackRange {
                           if enemy.canAttack(at: time) {
                               enemy.lastAttackTime = time
                               playerTakeDamage(enemy.kind.damage)
@@ -755,55 +751,57 @@ jobs:
               }
 
               private func playerTakeDamage(_ amount: Float) {
-                  health = max(0, health - amount)
-                  DispatchQueue.weakAsync {
-                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                  }
-                  if health <= 0 && !isGameOver {
+                  guard !isGameOver else { return }
+                  health -= amount
+                  hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
+                  
+                  if health <= 0 {
                       isGameOver = true
-                      DispatchQueue.main.async { self.hudView.showMessage("CRITICAL CRASH // LINK TERMINATED", color: .red, duration: 10.0) }
+                      hudView.showMessage("SYSTEM COLLAPSE: REBOOT REQUIRED", color: .red, duration: 6.0)
                   }
               }
 
               private func manageDirectorSpawns(dt: Float, time: TimeInterval) {
+                  if !waveActive && enemies.isEmpty {
+                      waveActive = true
+                      waveTimer = 4.0
+                  }
+                  
                   if waveActive {
-                      if enemies.isEmpty && !bossSpawned {
-                          waveActive = false
-                          waveTimer = 4.0
-                          DispatchQueue.main.async { self.hudView.showMessage("PHASE SECURED // RESPITE ACTIVE", color: .cyan, duration: 3.0) }
-                      }
-                  } else {
                       waveTimer -= Double(dt)
                       if waveTimer <= 0 {
+                          waveActive = false
                           wave += 1
-                          waveActive = true
-                          bossSpawned = false
-                          let spawnCount = 4 + (wave * 2)
-                          
-                          DispatchQueue.main.async {
-                              self.hudView.showMessage("WARNING // INTRUDER PHASE \(self.wave)", color: .red, duration: 2.0)
-                              self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                          }
+                          triggerNextWaveSpawns()
+                      }
+                  }
+              }
 
-                          for _ in 0..<spawnCount {
-                              let kind: EnemyKind = (wave >= 3 && Float.random(in: 0...1) > 0.7) ? .brute : .walker
-                              spawnEnemy(kind: kind)
-                          }
-                          
-                          if wave % 3 == 0 {
-                              spawnEnemy(kind: .boss)
-                              bossSpawned = true
-                          }
+              private func triggerNextWaveSpawns() {
+                  hudView.showMessage("PHASE \(wave) INTERFACE COMMENCING", color: .cyan, duration: 2.0)
+                  let baseCount = wave * 3 + 2
+                  
+                  for i in 0..<baseCount {
+                      let delay = Double(i) * 0.4
+                      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                          guard let self = self, !self.isGameOver else { return }
+                          let kind: EnemyKind = (self.wave % 3 == 0 && i == 0) ? .brute : .walker
+                          self.spawnEnemy(kind: kind)
                       }
                   }
               }
 
               private func spawnEnemy(kind: EnemyKind) {
                   let enemy = EnemyNode(kind: kind)
-                  let angle = Float.random(in: 0...(.pi * 2))
-                  let dist = Float.random(in: 18...28)
-                  let pPos = playerNode.position
-                  enemy.position = SCNVector3(pPos.x + sin(angle)*dist, 0, pPos.z + cos(angle)*dist)
+                  let angle = Float.random(in: 0...(Float.pi * 2))
+                  let radius = Float.random(in: 18...26)
+                  
+                  enemy.position = SCNVector3(
+                      playerNode.position.x + sin(angle) * radius,
+                      0,
+                      playerNode.position.z + cos(angle) * radius
+                  )
+                  
                   scene.rootNode.addChildNode(enemy)
                   enemies.append(enemy)
               }
@@ -811,152 +809,62 @@ jobs:
               func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
                   let maskA = contact.nodeA.physicsBody?.categoryBitMask ?? 0
                   let maskB = contact.nodeB.physicsBody?.categoryBitMask ?? 0
-
+                  
                   if (maskA == PhysicsMask.bullet && maskB == PhysicsMask.enemy) {
-                      handleBulletEnemyImpact(bullet: contact.nodeA, enemy: contact.nodeB)
-                  } else if (maskB == PhysicsMask.bullet && maskA == PhysicsMask.enemy) {
-                      handleBulletEnemyImpact(bullet: contact.nodeB, enemy: contact.nodeA)
+                      handleBulletCollision(bullet: contact.nodeA, enemy: contact.nodeB as? EnemyNode)
+                  } else if (maskA == PhysicsMask.enemy && maskB == PhysicsMask.bullet) {
+                      handleBulletCollision(bullet: contact.nodeB, enemy: contact.nodeA as? EnemyNode)
                   }
               }
 
-              private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  let enemyNode = enemy as? EnemyNode
-                  if enemyNode != nil && enemyNode!.isAlive {
-                      bullet.removeFromParentNode()
-                      enemyNode!.takeDamage(34)
-                      if !enemyNode!.isAlive {
-                          score += enemyNode!.kind.scoreValue
-                          DispatchQueue.main.async {
-                              self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                          }
+              private func handleBulletCollision(bullet: SCNNode, enemy: EnemyNode?) {
+                  bullet.removeFromParentNode()
+                  guard let enemy = enemy else { return }
+                  enemy.takeDamage(15)
+                  
+                  if !enemy.isAlive {
+                      score += enemy.kind.scoreValue
+                      DispatchQueue.main.async {
+                          self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
                       }
                   }
               }
-          }
 
-          extension DispatchQueue {
-              static func weakAsync(_ block: @escaping () -> Void) {
-                  if Thread.isMainThread { block() } else { main.async(execute: block) }
+              private func normalize(_ v: SCNVector3) -> SCNVector3 {
+                  let len = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+                  return len == 0 ? v : SCNVector3(v.x / len, v.y / len, v.z / len)
               }
           }
           SWIFT_EOF
 
-      # ── 3. APP CONFIGURATIONS & BUILD ───────────────────────────────────────
-      - name: Create project.yml
+      # ── 3. GENERATE PROJECT CONFIG & ARCHIVE ────────────────────────────────
+      - name: Generate Project Configuration
         run: |
-          cat > project.yml << 'YAML_EOF'
+          cat > project.yml << 'EOF'
           name: SV3D
           options:
-            bundleIdPrefix: com.syntheticvoid
+            bundleIdPrefix: com.engine.studio
           targets:
             SV3D:
               type: application
               platform: iOS
-              deploymentTarget: "15.0"
+              deploymentTarget: "17.0"
               sources: [SV3D]
-              info:
-                path: SV3D/Info.plist
-                properties:
-                  UILaunchScreen: {}
-                  UISupportedInterfaceOrientations: [UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-                  UIRequiresFullScreen: true
-          YAML_EOF
+              settings:
+                PRODUCT_BUNDLE_IDENTIFIER: com.engine.studio.SV3D
+                DEVELOPMENT_TEAM: ""
+                CODE_SIGNING_REQUIRED: "NO"
+                CODE_SIGN_IDENTITY: ""
+                CODE_SIGNING_ALLOWED: "NO"
+          EOF
+          xcodegen generate
 
-      - name: Create Info.plist
+      - name: Build Application Architecture
         run: |
-          cat > SV3D/Info.plist << 'XML_EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleDevelopmentRegion</key>
-              <string>en</string>
-              <key>CFBundleExecutable</key>
-              <string>$(EXECUTABLE_NAME)</string>
-              <key>CFBundleIdentifier</key>
-              <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
-              <key>CFBundleName</key>
-              <string>$(PRODUCT_NAME)</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array>
-                  <string>armv7</string>
-                  <string>metal</string>
-              </array>
-              <key>UISupportedInterfaceOrientations</key>
-              <array>
-                  <string>UIInterfaceOrientationLandscapeLeft</string>
-                  <string>UIInterfaceOrientationLandscapeRight</string>
-              </array>
-          </dict>
-          </plist>
-          XML_EOF
-
-      - name: Generate Xcode Project
-        run: xcodegen generate
-
-
-         # ── Build ─────────────────────────────────────────────────────────────────
-      - name: Build (unsigned)
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project SV3D/ShadowVillage3D.xcodeproj \
-            -scheme ShadowVillage3D \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination "generic/platform=iOS" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            ENABLE_BITCODE=NO \
-            SWIFT_VERSION=5.9 \
-            OBJROOT="${{ github.workspace }}/build/obj" \
-            SYMROOT="${{ github.workspace }}/build/sym" \
-            clean build 2>&1 | tee build.log | xcpretty || \
-            (echo "=== BUILD ERRORS ===" && grep "error:" build.log | head -30 && exit 1)
-
-      # ── Package IPA ───────────────────────────────────────────────────────────
-      - name: Package IPA
-        run: |
-          APP=$(find "${{ github.workspace }}/build/sym" -name "ShadowVillage3D.app" -type d | head -1)
-          if [ -z "$APP" ]; then
-            echo "❌ .app not found"
-            grep "error:" build.log | head -20
-            exit 1
-          fi
-          echo "✅ Found: $APP ($(du -sh "$APP" | cut -f1))"
-          mkdir -p Payload
-          cp -r "$APP" Payload/ShadowVillage3D.app
-          rm -rf Payload/ShadowVillage3D.app/_CodeSignature 2>/dev/null || true
-          zip -r ShadowVillage3D.ipa Payload
-          echo "📦 IPA: $(du -sh ShadowVillage3D.ipa | cut -f1)"
-
-
-              # ── Upload ────────────────────────────────────────────────────────────────
-      - name: Upload IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: ShadowVillage3D-iPhone15ProMax
-          path: ShadowVillage3D.ipa
-          retention-days: 30
-
-      - name: Build App Simulator Target Archive
-        run: |
-          set -o pipefail
           xcodebuild clean build \
             -project SV3D.xcodeproj \
             -scheme SV3D \
-            -destination "platform=iOS Simulator,name=iPhone 15" \
-            CODE_SIGNING_ALLOWED=NO \
-            | xcpretty
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
+            CODE_SIGNING_ALLOWED=NO | xcpretty
