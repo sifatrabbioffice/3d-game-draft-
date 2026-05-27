@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-13
 
     steps:
       # ── 1. ENVIRONMENT & TOOLS SETUP ────────────────────────────────────────
@@ -51,13 +51,13 @@ jobs:
           import UIKit
 
           struct PhysicsMask {
-              static let none:   UInt32 = 0
-              static let player: UInt32 = 0b1      // 1
-              static let enemy:  UInt32 = 0b10     // 2
-              static let bullet: UInt32 = 0b100    // 4
-              static let wall:   UInt32 = 0b1000   // 8
-              static let ground: UInt32 = 0b10000  // 16
-              static let item:   UInt32 = 0b100000 // 32
+              static let none:   Int = 0
+              static let player: Int = 0b1      // 1
+              static let enemy:  Int = 0b10     // 2
+              static let bullet: Int = 0b100    // 4
+              static let wall:   Int = 0b1000   // 8
+              static let ground: Int = 0b10000  // 16
+              static let item:   Int = 0b100000 // 32
           }
 
           enum EnemyKind {
@@ -298,7 +298,6 @@ jobs:
                   
                   let shape = SCNPhysicsShape(geometry: geo, options: nil)
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: shape)
-                  pBody.isAngularRestorationEnabled = false
                   pBody.allowsResting = false
                   pBody.mass = CGFloat(kind.scale * 2.0)
                   pBody.categoryBitMask = PhysicsMask.enemy
@@ -517,7 +516,6 @@ jobs:
 
                   let shape = SCNPhysicsShape(geometry: bodyGeo, options: nil)
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: shape)
-                  pBody.isAngularRestorationEnabled = false
                   pBody.allowsResting = false
                   pBody.friction = 0
                   pBody.rollingFriction = 0
@@ -601,7 +599,6 @@ jobs:
                   }
               }
 
-              // FIXED: iOS Native Method is 'touchesMoved', not 'touchesMoving'
               override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
                   for touch in touches {
                       if touch == moveJoystick.trackingTouch {
@@ -823,21 +820,22 @@ jobs:
               }
 
               private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  guard let enemyNode = enemy as? EnemyNode, enemyNode.isAlive else { return }
-                  bullet.removeFromParentNode()
-                  
-                  enemyNode.takeDamage(34)
-                  if !enemyNode.isAlive {
-                      score += enemyNode.kind.scoreValue
-                      DispatchQueue.main.async {
-                          self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
+                  let enemyNode = enemy as? EnemyNode
+                  if enemyNode != nil && enemyNode!.isAlive {
+                      bullet.removeFromParentNode()
+                      enemyNode!.takeDamage(34)
+                      if !enemyNode!.isAlive {
+                          score += enemyNode!.kind.scoreValue
+                          DispatchQueue.main.async {
+                              self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
+                          }
                       }
                   }
               }
           }
 
           extension DispatchQueue {
-              static var main.weakAsync: ( () -> Void ) -> Void {
+              static var weakAsync: ( () -> Void ) -> Void {
                   return { block in
                       if Thread.isMainThread { block() } else { main.async(execute: block) }
                   }
