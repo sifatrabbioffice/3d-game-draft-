@@ -802,18 +802,23 @@ jobs:
                   hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
               }
 
+              // ── এখানে জয়স্টিক সাইজ বড় করা হলো এবং স্ক্রিন পজিশন সামঞ্জস্য করা হলো ──
               private func setupJoysticks() {
-                  let pad: CGFloat = 30
-                  let rad: CGFloat = 70
+                  let rad: CGFloat = 85  // সাইজ বড় করা হয়েছে (আগে ছিল 70) যাতে টাচ এরিয়া বাড়ে
+                  let bottomOffset: CGFloat = 45  // নিচের মার্জিন বাড়ানো হয়েছে (উপরে তোলা হয়েছে)
+                  let sideOffset: CGFloat = 55    // স্ক্রিনের দুই পাশ থেকে কিছুটা ভেতরে আনা হয়েছে
+                  
                   let h = view.bounds.height
                   let w = view.bounds.width
 
                   moveJoystick = JoystickView(radius: rad, accentColor: .cyan)
-                  moveJoystick.frame.origin = CGPoint(x: pad + 15, y: h - (rad * 2) - pad - 15)
+                  moveJoystick.frame.origin = CGPoint(x: sideOffset, y: h - (rad * 2) - bottomOffset)
+                  moveJoystick.autoresizingMask = [.flexibleRightMargin, .flexibleTopMargin]
                   view.addSubview(moveJoystick)
 
                   aimJoystick = JoystickView(radius: rad, accentColor: UIColor(red: 1.0, green: 0.0, blue: 0.4, alpha: 1))
-                  aimJoystick.frame.origin = CGPoint(x: w - (rad * 2) - pad - 15, y: h - (rad * 2) - pad - 15)
+                  aimJoystick.frame.origin = CGPoint(x: w - (rad * 2) - sideOffset, y: h - (rad * 2) - bottomOffset)
+                  aimJoystick.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
                   view.addSubview(aimJoystick)
               }
 
@@ -831,6 +836,17 @@ jobs:
                               aimJoystick.trackingTouch = touch
                               aimJoystick.moveTouch(touch, in: view)
                           }
+                      }
+                  }
+              }
+
+              override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+                  guard isGameStarted && !isGamepadConnected else { return }
+                  for touch in touches {
+                      if touch == moveJoystick.trackingTouch {
+                          moveJoystick.moveTouch(touch, in: view)
+                      } else if touch == aimJoystick.trackingTouch {
+                          aimJoystick.moveTouch(touch, in: view)
                       }
                   }
               }
@@ -1057,7 +1073,6 @@ jobs:
                   }
               }
 
-              // ── এখানে 'contact' স্কোপ ফিক্স করা হলো ──────────────────────────
               private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
                   guard let target = enemy as? EnemyNode, target.isAlive else { return }
                   bullet.removeFromParentNode()
