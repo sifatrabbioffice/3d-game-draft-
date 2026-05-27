@@ -136,69 +136,64 @@ jobs:
           }
           SWIFT_EOF
 
-      # ── JoystickView ─────────────────────────────────────────────────────────
-      - name: Create JoystickView.swift
+      # ── Native Controller Input System (iOS 15+) ─────────────────────────────
+      - name: Create ControllerInput.swift
         run: |
-          cat > SV3D/Sources/JoystickView.swift << 'SWIFT_EOF'
+          cat > SV3D/Sources/ControllerInput.swift << 'SWIFT_EOF'
+          import GameController
+          import CoreHaptics
           import UIKit
-          import simd
 
-          class JoystickView: UIView {
-              private let ring = UIView()
-              private let knob = UIView()
-              let radius: CGFloat
-              var velocity: SIMD2<Float> = .zero
-              var isActive: Bool = false
-              var trackingTouch: UITouch?
-
-              init(radius: CGFloat, accentColor: UIColor = .cyan) {
-                  self.radius = radius
-                  super.init(frame: CGRect(x: 0, y: 0, width: radius * 2, height: radius * 2))
-                  isUserInteractionEnabled = false
-                  alpha = 0.85
-
-                  ring.frame               = bounds
-                  ring.layer.cornerRadius  = radius
-                  ring.backgroundColor     = UIColor(white: 0.05, alpha: 0.4)
-                  ring.layer.borderColor   = accentColor.withAlphaComponent(0.6).cgColor
-                  ring.layer.borderWidth   = 2.5
-                  ring.layer.shadowColor   = accentColor.cgColor
-                  ring.layer.shadowOffset  = .zero
-                  ring.layer.shadowRadius  = 6
-                  ring.layer.shadowOpacity = 0.5
-                  addSubview(ring)
-
-                  let kR                   = radius * 0.35
-                  knob.frame               = CGRect(x: radius - kR, y: radius - kR, width: kR * 2, height: kR * 2)
-                  knob.layer.cornerRadius  = kR
-                  knob.backgroundColor     = accentColor.withAlphaComponent(0.8)
-                  knob.layer.borderColor = UIColor.white.cgColor
-                  knob.layer.borderWidth   = 2.0
-                  knob.layer.shadowColor   = UIColor.white.cgColor
-                  knob.layer.shadowOffset  = .zero
-                  knob.layer.shadowRadius  = 4
-                  knob.layer.shadowOpacity = 0.6
-                  addSubview(knob)
+          class ControllerInput: ObservableObject {
+              static let shared = ControllerInput()
+              
+              private var hapticEngine: CHHapticEngine?
+              private var gcController: GCVirtualController?
+              
+              private init() {
+                  setupHaptics()
+                  setupVirtualController()
               }
-              required init?(coder: NSCoder) { fatalError() }
-
-              func moveTouch(_ touch: UITouch, in parentView: UIView) {
-                  let pt   = touch.location(in: parentView)
-                  let cx   = frame.midX, cy = frame.midY
-                  let dx   = Float(pt.x - cx), dy = Float(pt.y - cy)
-                  let dist = sqrt(dx * dx + dy * dy)
-                  let maxD = Float(radius)
-                  let f    = dist <= maxD ? 1.0 : maxD / dist
-                  knob.center = CGPoint(x: cx + CGFloat(dx * f), y: cy + CGFloat(dy * f))
-                  velocity    = SIMD2<Float>(dx * f / maxD, dy * f / maxD)
-                  isActive    = dist > maxD * 0.10
+              
+              private func setupVirtualController() {
+                  let config = GCVirtualController.Configuration()
+                  config.elements = [
+                      GCInputLeftThumbstick,
+                      GCInputRightThumbstick,
+                      GCInputButtonA,    // Fire/Action
+                      GCInputButtonX     // Reload
+                  ]
+                  gcController = GCVirtualController(configuration: config)
               }
-
-              func reset() {
-                  knob.center   = CGPoint(x: radius, y: radius)
-                  velocity      = .zero
-                  isActive      = false
-                  trackingTouch = nil
+              
+              func connect() {
+                  gcController?.connect()
+              }
+              
+              func disconnect() {
+                  gcController?.disconnect()
+              }
+              
+              func triggerButtonHaptic(intensity: Float = 0.7) {
+                  guard let engine = hapticEngine else { return }
+                  let event = CHHapticEvent(
+                      eventType: .hapticTransient,
+                      parameters: [
+                          CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+                          CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
+                      ],
+                      relativeTime: 0
+                  )
+                  if let pattern = try? CHHapticPattern(events: [event], parameters: []) {
+                      let player = try? engine.makePlayer(with: pattern)
+                      try? player?.start(atTime: CHHapticTimeImmediate)
+                  }
+              }
+              
+              private func setupHaptics() {
+                  guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+                  hapticEngine = try? CHHapticEngine()
+                  try? hapticEngine?.start()
               }
           }
           SWIFT_EOF
@@ -509,14 +504,8 @@ jobs:
               private var lastShotTime : TimeInterval = 0
 
               private var startOverlay : UIView!
-              private var moveJoystick : JoystickView!
-              private var aimJoystick  : JoystickView!
               private var hudView      : HUDOverlay!
               
-              // ── অন-স্ক্রিন বাটন এলিমেন্টসমূহ ──
-              private var reloadButton : UIButton!
-              private var actionButton : UIButton!
-
               private var cameraYaw    : Float   = 0
               private let cameraPitch  : Float   = -0.22
 
@@ -534,8 +523,6 @@ jobs:
                   setupCamera()
                   setupLighting()
                   setupHUD()
-                  setupJoysticks()
-                  setupActionButtons() // বাটন লোড করা হলো
                   setupStartScreen()
                   setupGamepadObservers()
               }
@@ -574,10 +561,6 @@ jobs:
 
                   view.addSubview(startOverlay)
                   hudView.isHidden = true
-                  moveJoystick.isHidden = true
-                  aimJoystick.isHidden = true
-                  reloadButton.isHidden = true
-                  actionButton.isHidden = true
               }
 
               @objc private func startGameButtonPressed() {
@@ -589,12 +572,10 @@ jobs:
                   }) { _ in
                       self.startOverlay.removeFromSuperview()
                       self.hudView.isHidden = false
-                      if !self.isGamepadConnected {
-                          self.moveJoystick.isHidden = false
-                          self.aimJoystick.isHidden = false
-                          self.reloadButton.isHidden = false
-                          self.actionButton.isHidden = false
-                      }
+                      
+                      // native Virtual Controller কানেক্ট করা হলো
+                      ControllerInput.shared.connect()
+                      
                       self.waveTimer = 3.0
                       self.hudView.showMessage("INCOMING ANOMALY DETECTED", color: .red, duration: 2.5)
                   }
@@ -617,36 +598,33 @@ jobs:
 
               @objc private func gamepadDidDisconnect(_ notification: Notification) {
                   isGamepadConnected = false
-                  DispatchQueue.main.async {
-                      if self.isGameStarted {
-                          self.moveJoystick.isHidden = false
-                          self.aimJoystick.isHidden = false
-                          self.reloadButton.isHidden = false
-                          self.actionButton.isHidden = false
-                      }
-                  }
               }
 
               private func configureGamepadInput(_ controller: GCController) {
                   isGamepadConnected = true
-                  DispatchQueue.main.async {
-                      if self.isGameStarted {
-                          self.moveJoystick.isHidden = true
-                          self.aimJoystick.isHidden = true
-                          self.reloadButton.isHidden = true
-                          self.actionButton.isHidden = true
-                      }
-                  }
 
                   if let gamepad = controller.extendedGamepad {
+                      // Left Stick -> মুভমেন্ট ভেক্টর ম্যাপ
                       gamepad.leftThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
                           self?.hardwareMoveVector = SIMD2<Float>(x, -y)
                       }
+                      // Right Stick -> এইমিং ভেক্টর ম্যাপ
                       gamepad.rightThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
                           self?.hardwareAimVector = SIMD2<Float>(x, -y)
                       }
+                      // Square Button / Button X -> রিলোড সিস্টেম ম্যাপ
                       gamepad.buttonX.pressedChangedHandler = { [weak self] (_, _, isPressed) in
-                          if isPressed { self?.performWeaponReload() }
+                          if isPressed { 
+                              self?.performWeaponReload() 
+                              ControllerInput.shared.triggerButtonHaptic(intensity: 0.5)
+                          }
+                      }
+                      // Cross Button / Button A -> ফায়ার সিস্টেম ম্যাপ (অপশনাল বাটন কম্ব্যাট)
+                      gamepad.buttonA.pressedChangedHandler = { [weak self] (_, _, isPressed) in
+                          if isPressed && (self?.ammo ?? 0) > 0 && (self?.canShoot ?? false) {
+                              DispatchQueue.main.async { self?.fireBullet() }
+                              ControllerInput.shared.triggerButtonHaptic(intensity: 0.8)
+                          }
                       }
                   }
               }
@@ -677,7 +655,7 @@ jobs:
               private func buildGround() {
                   let geo = SCNFloor()
                   let mat = SCNMaterial()
-                  mat.diffuse.contents   = UIColor(red: 0.18, green: 0.17, blue: 0.22, alpha: 1) // গ্রাউন্ডের ব্রাইটনেস একটু বাড়ানো হলো
+                  mat.diffuse.contents   = UIColor(red: 0.18, green: 0.17, blue: 0.22, alpha: 1)
                   mat.lightingModel      = .lambert
                   geo.materials = [mat]
                   let node = SCNNode(geometry: geo)
@@ -689,516 +667,357 @@ jobs:
 
               private func buildBorders() {
                   let h: Float = 8, t: Float = 1.5, s = mapHalf * 2
-                  let walls: [(Float, Float, Float, Float, Float, Float)] = [
-                      (0, h/2, -(mapHalf+t/2), s+t*2, h, t),
-                      (0, h/2,  (mapHalf+t/2), s+t*2, h, t),
-                      (-(mapHalf+t/2), h/2, 0, t, h, s),
-                      ( (mapHalf+t/2), h/2, 0, t, h, s)
+                  let walls = [
+                      (Float(0), -mapHalf, s, t),
+                      (Float(0),  mapHalf, s, t),
+                      (-mapHalf, Float(0), t, s),
+                      ( mapHalf, Float(0), t, s)
                   ]
-                  for (x, y, z, w, hh, d) in walls {
-                      let geo = SCNBox(width: CGFloat(w), height: CGFloat(hh), length: CGFloat(d), chamferRadius: 0)
+                  for w in walls {
+                      let box = SCNBox(width: CGFloat(w.2), height: CGFloat(h), length: CGFloat(w.3), chamferRadius: 0)
                       let mat = SCNMaterial()
-                      mat.diffuse.contents = UIColor(red: 0.22, green: 0.20, blue: 0.25, alpha: 1)
-                      geo.materials = [mat]
-                      let node = SCNNode(geometry: geo)
-                      node.position = SCNVector3(x, y, z)
-                      node.physicsBody = SCNPhysicsBody(type: .static, shape: nil)
-                      node.physicsBody?.categoryBitMask  = PhysicsMask.wall
-                      node.physicsBody?.collisionBitMask = PhysicsMask.player | PhysicsMask.enemy | PhysicsMask.bullet
+                      mat.diffuse.contents = UIColor(white: 0.12, alpha: 1)
+                      box.materials = [mat]
+                      let node = SCNNode(geometry: box)
+                      node.position = SCNVector3(w.0, h / 2, w.1)
+                      node.physicsBody = SCNPhysicsBody(type: .static, shape: SCNPhysicsShape(geometry: box, options: nil))
+                      node.physicsBody?.categoryBitMask = PhysicsMask.wall
                       scene.rootNode.addChildNode(node)
                   }
               }
 
               private func buildBuildings() {
-                  let data: [(Float, Float, Float, Float)] = [
-                      (-14, -18, 5.5, 7), (10, -16, 4.5, 6), (-8, 14, 6, 8),
-                      (16,   9,  4,  6),  (-18, 4, 4, 7),    (4, 19, 5, 7),
-                      (-4, -9,  4,  5),   (14, -4, 4, 6),    (0,  0, 3, 5)
-                  ]
-                  for (x, z, w, h) in data {
-                      let geo = SCNBox(width: CGFloat(w), height: CGFloat(h), length: CGFloat(w * 0.85), chamferRadius: 0.1)
+                  let positions: [(Float, Float)] = [(-12, -12), (12, -12), (-12, 12), (12, 12)]
+                  for pos in positions {
+                      let box = SCNBox(width: 5, height: 14, length: 5, chamferRadius: 0)
                       let mat = SCNMaterial()
-                      mat.diffuse.contents = UIColor(red: 0.25, green: 0.24, blue: 0.28, alpha: 1)
-                      geo.materials = [mat]
-                      let node = SCNNode(geometry: geo)
-                      node.position = SCNVector3(x, h/2, z)
-                      node.physicsBody = SCNPhysicsBody(type: .static, shape: nil)
-                      node.physicsBody?.categoryBitMask  = PhysicsMask.wall
-                      node.physicsBody?.collisionBitMask = PhysicsMask.player | PhysicsMask.enemy | PhysicsMask.bullet
+                      mat.diffuse.contents = UIColor(white: 0.16, alpha: 1)
+                      box.materials = [mat]
+                      let node = SCNNode(geometry: box)
+                      node.position = SCNVector3(pos.0, 7, pos.1)
+                      node.physicsBody = SCNPhysicsBody(type: .static, shape: SCNPhysicsShape(geometry: box, options: nil))
+                      node.physicsBody?.categoryBitMask = PhysicsMask.wall
                       scene.rootNode.addChildNode(node)
                   }
               }
 
               private func spawnPlayer() {
                   playerNode = SCNNode()
-                  playerNode.position = SCNVector3(0, 0, 10)
-
-                  let bodyGeo = SCNCapsule(capRadius: 0.4, height: 1.6)
-                  let bodyMat = SCNMaterial()
-                  bodyMat.diffuse.contents = UIColor.cyan
-                  bodyGeo.materials = [bodyMat]
-                  playerBody = SCNNode(geometry: bodyGeo)
-                  playerBody.position = SCNVector3(0, 0.8, 0)
+                  playerNode.position = SCNVector3(0, 0, 0)
+                  
+                  let cap = SCNCapsule(capRadius: 0.45, height: 1.8)
+                  let mat = SCNMaterial()
+                  mat.diffuse.contents = UIColor.cyan
+                  cap.materials = [mat]
+                  playerBody = SCNNode(geometry: cap)
+                  playerBody.position = SCNVector3(0, 0.9, 0)
                   playerNode.addChildNode(playerBody)
-
-                  let pointerGeo = SCNBox(width: 0.15, height: 0.15, length: 0.5, chamferRadius: 0)
-                  let pointerMat = SCNMaterial()
-                  pointerMat.diffuse.contents = UIColor.white
-                  pointerGeo.materials = [pointerMat]
-                  let pointer = SCNNode(geometry: pointerGeo)
-                  pointer.position = SCNVector3(0, 0.4, -0.4)
-                  playerBody.addChildNode(pointer)
-
-                  let shape = SCNPhysicsShape(geometry: bodyGeo, options: nil)
-                  let pBody = SCNPhysicsBody(type: .dynamic, shape: shape)
-                  pBody.allowsResting = false
-                  pBody.friction = 0
-                  pBody.rollingFriction = 0
                   
-                  // 🔥 [FIX] ক্যারেক্টারের কন্টিনিউয়াস স্পিন/চক্কর কাটা চিরতরে বন্ধ করার লক
-                  pBody.angularVelocityFactor = SCNVector3(0, 0, 0)
-                  
-                  pBody.categoryBitMask = PhysicsMask.player
-                  pBody.contactTestBitMask = PhysicsMask.enemy | PhysicsMask.item
-                  pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground
-                  playerNode.physicsBody = pBody
+                  let gun = SCNBox(width: 0.16, height: 0.16, length: 0.75, chamferRadius: 0)
+                  let gunMat = SCNMaterial()
+                  gunMat.diffuse.contents = UIColor.lightGray
+                  gun.materials = [gunMat]
+                  let gunNode = SCNNode(geometry: gun)
+                  gunNode.position = SCNVector3(0.22, 1.0, -0.45)
+                  playerBody.addChildNode(gunNode)
 
+                  let shape = SCNPhysicsShape(geometry: cap, options: nil)
+                  playerNode.physicsBody = SCNPhysicsBody(type: .dynamic, shape: shape)
+                  playerNode.physicsBody?.isAngularVelocityFactor = SCNVector3(0, 0, 0)
+                  playerNode.physicsBody?.categoryBitMask = PhysicsMask.player
+                  playerNode.physicsBody?.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground
+                  playerNode.physicsBody?.contactTestBitMask = PhysicsMask.enemy
                   scene.rootNode.addChildNode(playerNode)
               }
 
               private func setupCamera() {
                   cameraArm = SCNNode()
-                  cameraArm.position = SCNVector3(0, 1.2, 0)
-                  playerNode.addChildNode(cameraArm)
-
+                  cameraArm.position = playerNode.position
+                  scene.rootNode.addChildNode(cameraArm)
+                  
                   cameraNode = SCNNode()
                   cameraNode.camera = SCNCamera()
-                  cameraNode.camera?.zNear = 0.1
-                  cameraNode.camera?.zFar = 120
-                  cameraNode.position = SCNVector3(0, 3.8, 7.5)
-                  cameraNode.eulerAngles.x = cameraPitch
+                  cameraNode.camera?.zNear = 1.0
+                  cameraNode.camera?.zFar = 160.0
+                  cameraNode.position = SCNVector3(0, 19, 15)
+                  cameraNode.eulerAngles = SCNVector3(cameraPitch, 0, 0)
                   cameraArm.addChildNode(cameraNode)
               }
 
-              // ── [FIX] এনভায়রনমেন্ট এর আলো অনেক বাড়ানো হলো ──
               private func setupLighting() {
-                  let ambient = SCNNode()
-                  ambient.light = SCNLight()
-                  ambient.light?.type = .ambient
-                  ambient.light?.intensity = 500  // ১৮০ থেকে বাড়িয়ে ৫০০ করা হয়েছে (উজ্জ্বল আলো)
-                  ambient.light?.color = UIColor(red: 0.75, green: 0.72, blue: 0.85, alpha: 1)
-                  scene.rootNode.addChildNode(ambient)
-
-                  let sun = SCNNode()
-                  sun.light = SCNLight()
-                  sun.light?.type = .directional
-                  sun.light?.intensity = 800  // ৪০০ থেকে বাড়িয়ে ৮০০ করা হয়েছে যাতে ছায়া ও ম্যাপ একদম পরিষ্কার হয়
-                  sun.light?.color = UIColor(red: 0.9, green: 0.9, blue: 1.0, alpha: 1)
-                  sun.position = SCNVector3(10, 35, 10)
-                  sun.eulerAngles = SCNVector3(-Float.pi/3, Float.pi/4, 0)
-                  scene.rootNode.addChildNode(sun)
+                  let ambient = SCNLight()
+                  ambient.type = .ambient
+                  ambient.color = UIColor(white: 0.20, alpha: 1)
+                  let ambNode = SCNNode()
+                  ambNode.light = ambient
+                  scene.rootNode.addChildNode(ambNode)
+                  
+                  let omni = SCNLight()
+                  omni.type = .omni
+                  omni.color = UIColor(white: 0.85, alpha: 1)
+                  let omniNode = SCNNode()
+                  omniNode.light = omni
+                  omniNode.position = SCNVector3(0, 30, 0)
+                  scene.rootNode.addChildNode(omniNode)
               }
 
               private func setupHUD() {
                   hudView = HUDOverlay(frame: view.bounds)
                   hudView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   view.addSubview(hudView)
-                  hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
-              }
-
-              private func setupJoysticks() {
-                  let rad: CGFloat = 85
-                  let bottomOffset: CGFloat = 45
-                  let sideOffset: CGFloat = 55
-                  
-                  let h = view.bounds.height
-                  let w = view.bounds.width
-
-                  moveJoystick = JoystickView(radius: rad, accentColor: .cyan)
-                  moveJoystick.frame.origin = CGPoint(x: sideOffset, y: h - (rad * 2) - bottomOffset)
-                  moveJoystick.autoresizingMask = [.flexibleRightMargin, .flexibleTopMargin]
-                  view.addSubview(moveJoystick)
-
-                  aimJoystick = JoystickView(radius: rad, accentColor: UIColor(red: 1.0, green: 0.0, blue: 0.4, alpha: 1))
-                  aimJoystick.frame.origin = CGPoint(x: w - (rad * 2) - sideOffset, y: h - (rad * 2) - bottomOffset)
-                  aimJoystick.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  view.addSubview(aimJoystick)
-              }
-
-              // ── [NEW UI] অন-স্ক্রিন অ্যাকশন এবং রিলোড বাটন লেআউট ──
-              private func setupActionButtons() {
-                  let btnSize: CGFloat = 55
-                  let h = view.bounds.height
-                  let w = view.bounds.width
-                  
-                  // রিলোড বাটন (ডানদিকের জয়স্টিকের বাম-উপরে পজিশন করা হয়েছে)
-                  reloadButton = UIButton(type: .custom)
-                  reloadButton.frame = CGRect(x: w - 260, y: h - 110, width: btnSize, height: btnSize)
-                  reloadButton.backgroundColor = UIColor(white: 0.1, alpha: 0.6)
-                  reloadButton.layer.cornerRadius = btnSize / 2
-                  reloadButton.layer.borderWidth = 2
-                  reloadButton.layer.borderColor = UIColor.orange.cgColor
-                  reloadButton.setTitle("R", for: .normal)
-                  reloadButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
-                  reloadButton.setTitleColor(.orange, for: .normal)
-                  reloadButton.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  reloadButton.addTarget(self, action: #selector(reloadButtonPressed), for: .touchUpInside)
-                  view.addSubview(reloadButton)
-
-                  // অ্যাকশন বাটন (ডানদিকের জয়স্টিকের একদম উপরে পজিশন করা হয়েছে)
-                  actionButton = UIButton(type: .custom)
-                  actionButton.frame = CGRect(x: w - 180, y: h - 250, width: btnSize, height: btnSize)
-                  actionButton.backgroundColor = UIColor(white: 0.1, alpha: 0.6)
-                  actionButton.layer.cornerRadius = btnSize / 2
-                  actionButton.layer.borderWidth = 2
-                  actionButton.layer.borderColor = UIColor.magenta.cgColor
-                  actionButton.setTitle("X", for: .normal)
-                  actionButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
-                  actionButton.setTitleColor(.magenta, for: .normal)
-                  actionButton.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  actionButton.addTarget(self, action: #selector(actionButtonPressed), for: .touchUpInside)
-                  view.addSubview(actionButton)
-              }
-
-              @objc private func reloadButtonPressed() {
-                  performWeaponReload()
-              }
-
-              @objc private func actionButtonPressed() {
-                  hudView.showMessage("ACTION SYNCHRONIZED", color: .magenta, duration: 1.0)
-              }
-
-              override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-                  guard isGameStarted && !isGamepadConnected else { return }
-                  for touch in touches {
-                      let pt = touch.location(in: view)
-                      
-                      // বাটনগুলোর উপর টাচ এরিয়া ওভারল্যাপ এড়ানোর চেক
-                      if reloadButton.frame.contains(pt) || actionButton.frame.contains(pt) { continue }
-                      
-                      if pt.x < view.bounds.width / 2 {
-                          if moveJoystick.trackingTouch == nil {
-                              moveJoystick.trackingTouch = touch
-                              moveJoystick.moveTouch(touch, in: view)
-                          }
-                      } else {
-                          if aimJoystick.trackingTouch == nil {
-                              aimJoystick.trackingTouch = touch
-                              aimJoystick.moveTouch(touch, in: view)
-                          }
-                      }
-                  }
-              }
-
-              override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-                  guard isGameStarted && !isGamepadConnected else { return }
-                  for touch in touches {
-                      if touch == moveJoystick.trackingTouch {
-                          moveJoystick.moveTouch(touch, in: view)
-                      } else if touch == aimJoystick.trackingTouch {
-                          aimJoystick.moveTouch(touch, in: view)
-                      }
-                  }
-              }
-
-              override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-                  for touch in touches {
-                      if touch == moveJoystick.trackingTouch { moveJoystick.reset() }
-                      if touch == aimJoystick.trackingTouch { aimJoystick.reset() }
-                  }
-              }
-
-              override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-                  for touch in touches {
-                      if touch == moveJoystick.trackingTouch { moveJoystick.reset() }
-                      if touch == aimJoystick.trackingTouch { aimJoystick.reset() }
-                  }
-              }
-
-              func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-                  if lastTime == 0 { lastTime = time }
-                  let dt = Float(min(time - lastTime, 1.0 / 30.0))
-                  lastTime = time
-
-                  guard isGameStarted && !isGameOver else { return }
-
-                  handleMovement(dt: dt)
-                  handleAimAndFiring(time: time)
-                  updateEnemies(dt: dt, time: time)
-                  updateBullets(dt: dt)
-                  manageDirectorSpawns(dt: dt, time: time)
-              }
-
-              private func handleMovement(dt: Float) {
-                  guard let pBody = playerNode.physicsBody else { return }
-                  
-                  let moveX = isGamepadConnected ? hardwareMoveVector.x : moveJoystick.velocity.x
-                  let moveZ = isGamepadConnected ? hardwareMoveVector.y : moveJoystick.velocity.y
-                  let isActive = isGamepadConnected ? (unsupportedLength(hardwareMoveVector) > 0.15) : moveJoystick.isActive
-                  
-                  if isActive {
-                      let speedMultiplier: Float = 5.5
-                      
-                      let forwardX = sin(cameraYaw)
-                      let forwardZ = cos(cameraYaw)
-                      let rightX = sin(cameraYaw + .pi/2)
-                      let rightZ = cos(cameraYaw + .pi/2)
-                      
-                      let computedX = (rightX * moveX) + (forwardX * moveZ)
-                      let computedZ = (rightZ * moveX) + (forwardZ * moveZ)
-                      
-                      pBody.velocity = SCNVector3(computedX * speedMultiplier, pBody.velocity.y, computedZ * speedMultiplier)
-                      
-                      let isAimActive = isGamepadConnected ? (unsupportedLength(hardwareAimVector) > 0.15) : aimJoystick.isActive
-                      if !isAimActive {
-                          playerBody.eulerAngles.y = atan2(computedX, computedZ)
-                      }
-                  } else {
-                      pBody.velocity = SCNVector3(0, pBody.velocity.y, 0)
-                  }
-                  
-                  // 🔥 [LOCK] কন্টিনিউয়াস রোটেশন ক্লিয়ার করা—যাতে নিজে থেকে কখনো স্পিন না নেয়
-                  playerNode.eulerAngles = SCNVector3(0, playerNode.eulerAngles.y, 0)
-              }
-
-              private func handleAimAndFiring(time: TimeInterval) {
-                  let aimX = isGamepadConnected ? hardwareAimVector.x : aimJoystick.velocity.x
-                  let aimZ = isGamepadConnected ? hardwareAimVector.y : aimJoystick.velocity.y
-                  let isActive = isGamepadConnected ? (unsupportedLength(hardwareAimVector) > 0.15) : aimJoystick.isActive
-                  
-                  if isActive {
-                      let forwardX = sin(cameraYaw)
-                      let forwardZ = cos(cameraYaw)
-                      let rightX = sin(cameraYaw + .pi/2)
-                      let rightZ = cos(cameraYaw + .pi/2)
-                      
-                      let worldAimX = (rightX * aimX) + (forwardX * aimZ)
-                      let worldAimZ = (rightZ * aimX) + (forwardZ * aimZ)
-                      
-                      playerBody.eulerAngles.y = atan2(worldAimX, worldAimZ)
-                      
-                      if time - lastShotTime >= 0.15 {
-                          fireBullet(direction: SCNVector3(worldAimX, 0, worldAimZ))
-                          lastShotTime = time
-                      }
-                  }
-              }
-
-              private func unsupportedLength(_ v: SIMD2<Float>) -> Float {
-                  return sqrt(v.x * v.x + v.y * v.y)
-              }
-
-              private func fireBullet(direction: SCNVector3) {
-                  guard ammo > 0, !isReloading else {
-                      if ammo == 0 && !isReloading { performWeaponReload() }
-                      return
-                  }
-
-                  ammo -= 1
-                  DispatchQueue.main.async {
-                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                  }
-
-                  let bullet = SCNNode(geometry: SCNSphere(radius: 0.12))
-                  bullet.geometry?.firstMaterial?.diffuse.contents = UIColor.magenta
-                  bullet.geometry?.firstMaterial?.lightingModel = .constant
-                  
-                  let spawnPos = playerNode.position
-                  bullet.position = SCNVector3(spawnPos.x, spawnPos.y + 0.8, spawnPos.z)
-
-                  let len = sqrt(direction.x * direction.x + direction.z * direction.z)
-                  let forceX = (direction.x / len) * 26.0
-                  let forceZ = (direction.z / len) * 26.0
-
-                  let bBody = SCNPhysicsBody(type: .dynamic, shape: nil)
-                  bBody.isAffectedByGravity = false
-                  bBody.categoryBitMask = PhysicsMask.bullet
-                  bBody.contactTestBitMask = PhysicsMask.enemy | PhysicsMask.wall
-                  bBody.collisionBitMask = PhysicsMask.none
-                  bBody.velocity = SCNVector3(forceX, 0, forceZ)
-                  bullet.physicsBody = bBody
-
-                  scene.rootNode.addChildNode(bullet)
-                  bullets.append(bullet)
-
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in
-                      bullet.removeFromParentNode()
-                      self?.bullets.removeAll(where: { $0 == bullet })
-                  }
               }
 
               private func performWeaponReload() {
-                  guard !isReloading, totalAmmo > 0 else { return }
+                  guard !isReloading && totalAmmo > 0 && ammo < 30 else { return }
                   isReloading = true
-                  DispatchQueue.main.async {
-                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                  }
-                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                  hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: true)
+                  
+                  DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
                       guard let self = self else { return }
                       let needed = 30 - self.ammo
                       let transfer = min(needed, self.totalAmmo)
                       self.ammo += transfer
                       self.totalAmmo -= transfer
                       self.isReloading = false
-                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
+                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: false)
                   }
               }
 
-              private func updateEnemies(dt: Float, time: TimeInterval) {
-                  let pPos = playerNode.position
-                  enemies.removeAll { !$0.isAlive }
+              func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+                  guard isGameStarted && !isGameOver else { return }
+                  if lastTime == 0 { lastTime = time }
+                  let dt = Float(time - lastTime)
+                  lastTime = time
 
-                  for enemy in enemies {
-                      enemy.moveToward(target: pPos, dt: dt)
-                      if enemy.distanceTo(pPos) <= enemy.kind.attackRange {
-                          if enemy.canAttack(at: time) {
-                              enemy.lastAttackTime = time
-                              playerTakeDamage(enemy.kind.damage)
-                          }
-                      }
-                  }
-              }
+                  // ডুয়াল ভার্চুয়াল জয়স্টিক ভেক্টর থেকে ডেটা রিড করা হচ্ছে
+                  let moveVec = hardwareMoveVector
+                  let aimVec = hardwareAimVector
 
-              private func updateBullets(dt: Float) {}
-
-              private func playerTakeDamage(_ amount: Float) {
-                  health = max(0, health - amount)
-                  DispatchQueue.main.async {
-                      self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
-                  }
-                  if health <= 0 && !isGameOver {
-                      isGameOver = true
-                      DispatchQueue.main.async { self.hudView.showMessage("CRITICAL CRASH // LINK TERMINATED", color: .red, duration: 10.0) }
-                  }
-              }
-
-              private func manageDirectorSpawns(dt: Float, time: TimeInterval) {
-                  if waveActive {
-                      if enemies.isEmpty && !bossSpawned {
-                          waveActive = false
-                          waveTimer = 4.0
-                          DispatchQueue.main.async { self.hudView.showMessage("PHASE SECURED // RESPITE ACTIVE", color: .cyan, duration: 3.0) }
-                      }
+                  let moveLength = sqrt(moveVec.x * moveVec.x + moveVec.y * moveVec.y)
+                  if moveLength > 0.1 {
+                      let speed: Float = 6.5
+                      let vel = SCNVector3(moveVec.x * speed, playerNode.physicsBody?.velocity.y ?? 0, moveVec.y * speed)
+                      playerNode.physicsBody?.velocity = vel
                   } else {
-                      waveTimer -= Double(dt)
+                      playerNode.physicsBody?.velocity.x = 0
+                      playerNode.physicsBody?.velocity.z = 0
+                  }
+
+                  let aimLength = sqrt(aimVec.x * aimVec.x + aimVec.y * aimVec.y)
+                  if aimLength > 0.1 {
+                      playerBody.eulerAngles.y = atan2(aimVec.x, aimVec.y)
+                      // Twin-Stick শুটার মেকানিক্স: ডান জয়স্টিক ঘোরানো মাত্রই অটো-ফায়ার একটিভেট হবে
+                      if time - lastShotTime > 0.16 && ammo > 0 && !isReloading {
+                          lastShotTime = time
+                          DispatchQueue.main.async { self.fireBullet() }
+                      }
+                  } else if moveLength > 0.1 {
+                      playerBody.eulerAngles.y = atan2(moveVec.x, moveVec.y)
+                  }
+
+                  cameraArm.position = playerNode.position
+
+                  updateWaveAndEnemies(time: time, dt: dt)
+                  bullets = bullets.filter { $0.parent != nil }
+              }
+
+              private func updateWaveAndEnemies(time: TimeInterval, dt: Float) {
+                  if !waveActive {
+                      waveTimer -= TimeInterval(dt)
                       if waveTimer <= 0 {
                           wave += 1
                           waveActive = true
                           bossSpawned = false
-                          let spawnCount = 4 + (wave * 2)
-                          
                           DispatchQueue.main.async {
-                              self.hudView.showMessage("WARNING // INTRUDER PHASE \(self.wave)", color: .red, duration: 2.0)
-                              self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
+                              self.hudView.showMessage("PHASE \(self.wave) INITIATED", color: .cyan)
+                              self.spawnWaveEnemies()
                           }
+                      }
+                  }
 
-                          for _ in 0..<spawnCount {
-                              let kind: EnemyKind = (wave >= 3 && Float.random(in: 0...1) > 0.7) ? .brute : .walker
-                              spawnEnemy(kind: kind)
+                  enemies = enemies.filter { $0.parent != nil && $0.isAlive }
+
+                  let pPos = playerNode.position
+                  for e in enemies {
+                      e.moveToward(target: pPos, dt: dt)
+                      if e.distanceTo(pPos) <= e.kind.attackRange {
+                          if e.canAttack(at: time) {
+                              e.lastAttackTime = time
+                              DispatchQueue.main.async { self.playerTakeDamage(e.kind.damage) }
                           }
-                          
-                          if wave % 3 == 0 {
-                              spawnEnemy(kind: .boss)
-                              bossSpawned = true
-                          }
+                      }
+                  }
+
+                  if waveActive && enemies.isEmpty {
+                      waveActive = false
+                      waveTimer = 4.0
+                      DispatchQueue.main.async {
+                          self.totalAmmo += 60
+                          self.hudView.showMessage("PHASE CLEAR // SUPPLY REPLENISHED", color: .green)
+                          self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
                       }
                   }
               }
 
-              private func spawnEnemy(kind: EnemyKind) {
-                  let enemy = EnemyNode(kind: kind)
-                  let angle = Float.random(in: 0...(.pi * 2))
-                  let dist = Float.random(in: 18...28)
-                  let pPos = playerNode.position
-                  enemy.position = SCNVector3(pPos.x + sin(angle)*dist, 0, pPos.z + cos(angle)*dist)
-                  scene.rootNode.addChildNode(enemy)
-                  enemies.append(enemy)
+              private func spawnWaveEnemies() {
+                  let count = wave * 3 + 3
+                  let kinds: [EnemyKind] = [.walker, .runner, .cultist, .brute]
+                  for i in 0..<count {
+                      let angle = Float(i) * (.pi * 2 / Float(count))
+                      let r: Float = 24.0
+                      let kind = (wave >= 3 && i == 0) ? .brute : kinds.randomElement() ?? .walker
+                      let enemy = EnemyNode(kind: kind)
+                      enemy.position = SCNVector3(cos(angle) * r, 0, sin(angle) * r)
+                      scene.rootNode.addChildNode(enemy)
+                      enemies.append(enemy)
+                  }
+                  
+                  if wave % 3 == 0 && !bossSpawned {
+                      bossSpawned = true
+                      let boss = EnemyNode(kind: .boss)
+                      boss.position = SCNVector3(0, 0, -22)
+                      scene.rootNode.addChildNode(boss)
+                      enemies.append(boss)
+                  }
+              }
+
+              private func fireBullet() {
+                  guard ammo > 0 else { return }
+                  ammo -= 1
+                  hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
+
+                  let bGeo = SCNSphere(radius: 0.16)
+                  let bMat = SCNMaterial()
+                  bMat.diffuse.contents = UIColor.cyan
+                  bMat.emission.contents = UIColor.cyan
+                  bMat.lightingModel = .constant
+                  bGeo.materials = [bMat]
+
+                  let bNode = SCNNode(geometry: bGeo)
+                  bNode.position = playerNode.position
+                  bNode.position.y += 1.0
+
+                  let angle = playerBody.eulerAngles.y
+                  let speed: Float = 26.0
+                  let vx = sin(angle) * speed
+                  let vz = cos(angle) * speed
+
+                  let shape = SCNPhysicsShape(geometry: bGeo, options: nil)
+                  bNode.physicsBody = SCNPhysicsBody(type: .dynamic, shape: shape)
+                  bNode.physicsBody?.categoryBitMask = PhysicsMask.bullet
+                  bNode.physicsBody?.collisionBitMask = PhysicsMask.wall
+                  bNode.physicsBody?.contactTestBitMask = PhysicsMask.enemy | PhysicsMask.wall
+                  bNode.physicsBody?.velocity = SCNVector3(vx, 0, vz)
+
+                  scene.rootNode.addChildNode(bNode)
+                  bullets.append(bNode)
+
+                  bNode.runAction(SCNAction.sequence([
+                      SCNAction.wait(duration: 1.4),
+                      SCNAction.removeFromParentNode()
+                  ]))
+              }
+
+              private func playerTakeDamage(_ amt: Float) {
+                  guard !isGameOver else { return }
+                  health -= amt
+                  hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
+                  if health <= 0 { triggerGameOver() }
+              }
+
+              private func triggerGameOver() {
+                  isGameOver = true
+                  playerNode.physicsBody = nil
+                  hudView.showMessage("SYSTEM FAILURE // GAME OVER", color: .red, duration: 8.0)
               }
 
               func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
                   let maskA = contact.nodeA.physicsBody?.categoryBitMask ?? 0
                   let maskB = contact.nodeB.physicsBody?.categoryBitMask ?? 0
 
-                  if (maskA == PhysicsMask.bullet && maskB == PhysicsMask.enemy) {
-                      handleBulletEnemyImpact(bullet: contact.nodeA, enemy: contact.nodeB)
-                  } else if (maskB == PhysicsMask.bullet && maskA == PhysicsMask.enemy) {
-                      handleBulletEnemyImpact(bullet: contact.nodeB, enemy: contact.nodeA)
-                  }
-              }
+                  var bulletNode: SCNNode?
+                  var enemyNode: EnemyNode?
 
-              private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  guard let target = enemy as? EnemyNode, target.isAlive else { return }
-                  bullet.removeFromParentNode()
-                  
-                  target.takeDamage(34)
-                  if !target.isAlive {
-                      score += target.kind.scoreValue
+                  if maskA == PhysicsMask.bullet && maskB == PhysicsMask.enemy {
+                      bulletNode = contact.nodeA
+                      enemyNode = contact.nodeB as? EnemyNode
+                  } else if maskB == PhysicsMask.bullet && maskA == PhysicsMask.enemy {
+                      bulletNode = contact.nodeB
+                      enemyNode = contact.nodeA as? EnemyNode
+                  }
+
+                  if let b = bulletNode, let e = enemyNode {
+                      b.removeFromParentNode()
                       DispatchQueue.main.async {
-                          self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
+                          if e.isAlive {
+                              e.takeDamage(35)
+                              if !e.isAlive {
+                                  self.score += e.kind.scoreValue
+                                  self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
+                              }
+                          }
                       }
                   }
               }
           }
           SWIFT_EOF
 
-      # ── Project Configuration & Build System ─────────────────────────────────
-      - name: Create project.yml
+      # ── Configuration Files ──────────────────────────────────────────────────
+      - name: Create project.yml for XcodeGen
         run: |
           cat > project.yml << 'EOF'
           name: SV3D
           options:
-            bundleIdPrefix: com.shadowvillage.game
+            bundleIdPrefix: com.shadowvillage
           targets:
             SV3D:
               type: application
               platform: iOS
               deploymentTarget: "15.0"
-              sources: [SV3D]
+              sources: [SV3D/Sources]
               settings:
-                base:
-                  INFOPLIST_FILE: SV3D/Info.plist
-                  PRODUCT_BUNDLE_IDENTIFIER: com.shadowvillage.game.sv3d
-                  PRODUCT_NAME: SV3D
-                  MARKETING_VERSION: "1.0.0"
-                  CURRENT_PROJECT_VERSION: "1"
-                  TARGETED_DEVICE_FAMILY: "1,2"
-                  ASSETCATALOG_COMPILER_APPICON_NAME: ""
+                INFOPLIST_FILE: SV3D/Sources/Info.plist
+                PRODUCT_BUNDLE_IDENTIFIER: com.shadowvillage.sv3d
+                DEVELOPMENT_TEAM: ""
+                CODE_SIGNING_ALLOWED: NO
+                CODE_SIGN_STYLE: Automatic
           EOF
 
       - name: Create Info.plist
         run: |
-          cat > SV3D/Info.plist << 'EOF'
+          cat > SV3D/Sources/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-              <key>CFBundleIdentifier</key>
-              <string>com.shadowvillage.game.sv3d</string>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
               <key>CFBundleExecutable</key>
-              <string>SV3D</string>
+              <string>$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key>
+              <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
               <key>CFBundleName</key>
-              <string>SV3D</string>
-              <key>CFBundleDisplayName</key>
-              <string>ShadowVillage3D</string>
+              <string>$(PRODUCT_NAME)</string>
               <key>CFBundlePackageType</key>
-              <string>APPL</string>
+              <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
               <key>CFBundleShortVersionString</key>
-              <string>1.0.0</string>
+              <string>1.0</string>
               <key>CFBundleVersion</key>
               <string>1</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
+              <key>UIApplicationSupportsIndirectInputEvents</key>
+              <true/>
               <key>UILaunchStoryboardName</key>
               <string></string>
-              <key>UIRequiredDeviceCapabilities</key>
+              <key>UISupportedInterfaceOrientations~ipad</key>
               <array>
-                  <string>armv7</string>
-                  <string>metal</string>
-                  <array>
-                      <string>gamekit</string>
-                  </array>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
               </array>
-              <key>UISupportedInterfaceOrientations</key>
+              <key>UISupportedInterfaceOrientations~iphone</key>
               <array>
                   <string>UIInterfaceOrientationLandscapeLeft</string>
                   <string>UIInterfaceOrientationLandscapeRight</string>
@@ -1207,33 +1026,32 @@ jobs:
           </plist>
           EOF
 
+      # ── Project Build Pipeline ───────────────────────────────────────────────
       - name: Generate Xcode Project File
         run: xcodegen generate
 
-      - name: Archive Project for Real Device (No-Sign Method)
+      - name: Build Application and Archive
         run: |
-          set -o pipefail
           xcodebuild archive \
             -project SV3D.xcodeproj \
             -scheme SV3D \
+            -configuration Release \
             -archivePath build/SV3D.xcarchive \
-            -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            | xcpretty
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" | xcpretty
 
-      - name: Package App Bundle into Installable IPA
+      - name: Package App Package (Payload IPA)
         run: |
-          mkdir -p build/IPA_Structure/Payload
-          cp -R build/SV3D.xcarchive/Products/Applications/SV3D.app build/IPA_Structure/Payload/
-          cd build/IPA_Structure
-          zip -q -r ../ShadowVillage3D.ipa Payload
+          mkdir -p build/Export/Payload
+          cp -R build/SV3D.xcarchive/Products/Applications/SV3D.app build/Export/Payload/
+          cd build/Export
+          zip -r ../../ShadowVillage3D.ipa Payload
           cd ../..
-          echo "=== IPA GENERATED WITH MAIN MENU & GAMEPAD SUPPORT ==="
 
-      - name: Upload Artifact & Generate Direct Download Link
+      - name: Upload Finished Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ShadowVillage3D-iOS-IPA
-          path: build/ShadowVillage3D.ipa
-          retention-days: 7
+          name: ShadowVillage3D-iOS-Build
+          path: ShadowVillage3D.ipa
