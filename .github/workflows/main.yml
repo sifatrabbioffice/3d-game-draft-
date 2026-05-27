@@ -644,13 +644,13 @@ jobs:
                       let vel = moveJoystick.velocity
                       let speedMultiplier: Float = 5.5
                       
-                      let forwardX = sin(cameraYaw)
-                      let forwardZ = cos(cameraYaw)
-                      let rightX = sin(cameraYaw + .pi/2)
-                      let rightZ = cos(cameraYaw + .pi/2)
+                      let forwardX = Float(sin(cameraYaw))
+                      let forwardZ = Float(cos(cameraYaw))
+                      let rightX = Float(sin(cameraYaw + .pi/2))
+                      let rightZ = Float(cos(cameraYaw + .pi/2))
                       
-                      let moveX = (rightX * vel.x) + (forwardX * vel.y)
-                      let moveZ = (rightZ * vel.x) + (forwardZ * vel.y)
+                      let moveX = (rightX * Float(vel.x)) + (forwardX * Float(vel.y))
+                      let moveZ = (rightZ * Float(vel.x)) + (forwardZ * Float(vel.y))
                       
                       pBody.velocity = SCNVector3(moveX * speedMultiplier, pBody.velocity.y, moveZ * speedMultiplier)
                       
@@ -666,13 +666,13 @@ jobs:
                   if aimJoystick.isActive {
                       let av = aimJoystick.velocity
                       
-                      let forwardX = sin(cameraYaw)
-                      let forwardZ = cos(cameraYaw)
-                      let rightX = sin(cameraYaw + .pi/2)
-                      let rightZ = cos(cameraYaw + .pi/2)
+                      let forwardX = Float(sin(cameraYaw))
+                      let forwardZ = Float(cos(cameraYaw))
+                      let rightX = Float(sin(cameraYaw + .pi/2))
+                      let rightZ = Float(cos(cameraYaw + .pi/2))
                       
-                      let worldAimX = (rightX * av.x) + (forwardX * av.y)
-                      let worldAimZ = (rightZ * av.x) + (forwardZ * av.y)
+                      let worldAimX = (rightX * Float(av.x)) + (forwardX * Float(av.y))
+                      let worldAimZ = (rightZ * Float(av.x)) + (forwardZ * Float(av.y))
                       
                       playerBody.eulerAngles.y = atan2(worldAimX, worldAimZ)
                       
@@ -756,7 +756,7 @@ jobs:
 
               private func playerTakeDamage(_ amount: Float) {
                   health = max(0, health - amount)
-                  DispatchQueue.main.weakAsync {
+                  DispatchQueue.weakAsync {
                       self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
                   }
                   if health <= 0 && !isGameOver {
@@ -835,10 +835,8 @@ jobs:
           }
 
           extension DispatchQueue {
-              static var weakAsync: ( () -> Void ) -> Void {
-                  return { block in
-                      if Thread.isMainThread { block() } else { main.async(execute: block) }
-                  }
+              static func weakAsync(_ block: @escaping () -> Void) {
+                  if Thread.isMainThread { block() } else { main.async(execute: block) }
               }
           }
           SWIFT_EOF
