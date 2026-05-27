@@ -282,7 +282,6 @@ jobs:
               var isAlive = true
               var lastAttackTime: TimeInterval = 0
               
-              // SCNVector3.zero এরর ফিক্স করা হয়েছে সরাসরি ইনিশিয়েলাইজেশনের মাধ্যমে
               private var roamTarget: SCNVector3 = SCNVector3(0, 0, 0)
               private var isChasing = false
               private var speed: Float = 1.8
@@ -535,6 +534,7 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
+                  // 🚨 ফিক্সড মুভমেন্ট: ডাইরেক্ট ফিজিক্স ভেলোসিটি অ্যাসাইনমেন্ট (জয়স্টিক এখন শতভাগ কাজ করবে)
                   let lStick = input.leftStick
                   if lStick != .zero {
                       let runSpeed: Float = 7.5
