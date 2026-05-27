@@ -172,7 +172,7 @@ jobs:
                   knob.frame               = CGRect(x: radius - kR, y: radius - kR, width: kR * 2, height: kR * 2)
                   knob.layer.cornerRadius  = kR
                   knob.backgroundColor     = accentColor.withAlphaComponent(0.8)
-                  knob.layer.borderColor   = UIColor.white.cgColor
+                  knob.layer.borderColor = UIColor.white.cgColor
                   knob.layer.borderWidth   = 2.0
                   knob.layer.shadowColor   = UIColor.white.cgColor
                   knob.layer.shadowOffset  = .zero
@@ -634,7 +634,6 @@ jobs:
 
                   let shape = SCNPhysicsShape(geometry: bodyGeo, options: nil)
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: shape)
-                  pBody.isAngularRestorationEnabled = false
                   pBody.allowsResting = false
                   pBody.friction = 0
                   pBody.rollingFriction = 0
@@ -713,16 +712,6 @@ jobs:
                               aimJoystick.trackingTouch = touch
                               aimJoystick.moveTouch(touch, in: view)
                           }
-                      }
-                  }
-              }
-
-              override func touchesMoving(_ touches: Set<UITouch>, with event: UIEvent?) {
-                  for touch in touches {
-                      if touch == moveJoystick.trackingTouch {
-                          moveJoystick.moveTouch(touch, in: view)
-                      } else if touch == aimJoystick.trackingTouch {
-                          aimJoystick.moveTouch(touch, in: view)
                       }
                   }
               }
@@ -940,12 +929,13 @@ jobs:
               }
 
               private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  guard let enemyNode = enemy as? EnemyNode, enemyNode.isAlive else { return }
+                  let enemyNode = enemy as? EnemyNode ?? (contact.nodeA as? EnemyNode)
+                  guard let enemyTarget = enemyNode, enemyTarget.isAlive else { return }
                   bullet.removeFromParentNode()
                   
-                  enemyNode.takeDamage(34)
-                  if !enemyNode.isAlive {
-                      score += enemyNode.kind.scoreValue
+                  enemyTarget.takeDamage(34)
+                  if !enemyTarget.isAlive {
+                      score += enemyTarget.kind.scoreValue
                       DispatchQueue.main.async {
                           self.hudView.update(health: self.health, maxHealth: self.maxHealth, ammo: self.ammo, totalAmmo: self.totalAmmo, score: self.score, wave: self.wave, isReloading: self.isReloading)
                       }
@@ -1014,7 +1004,6 @@ jobs:
       - name: Generate Xcode Project File
         run: xcodegen generate
 
-      # [FIXED] generic/platform=iOS দিয়ে এরর ছাড়া সাকসেসফুল আর্কাইভ মেথড
       - name: Archive Project for Real Device (No-Sign Method)
         run: |
           xcodebuild archive \
@@ -1025,7 +1014,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO
 
-      # [ADDED] আর্কাইভ থেকে প্রপার .ipa ফাইল বান্ডলিং প্রসেস
       - name: Package App Bundle into Installable IPA
         run: |
           mkdir -p build/Exported-IPA/Payload
@@ -1034,7 +1022,6 @@ jobs:
           zip -r ShadowVillage3D.ipa Payload
           echo "=== IPA GENERATION SUCCESS ==="
 
-      # [ADDED] গিটহাব একশনে ওয়ান-ক্লিক ডিরেক্ট ডাউনলোড লিংক জেনারেটর
       - name: Upload Artifact & Generate Direct Download Link
         uses: actions/upload-artifact@v4
         with:
