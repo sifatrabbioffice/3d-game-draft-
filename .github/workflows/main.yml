@@ -1018,15 +1018,17 @@ jobs:
 
       - name: Package App Bundle into Installable IPA
         run: |
-          mkdir -p build/Exported-IPA/Payload
-          cp -r build/SV3D.xcarchive/Products/Applications/SV3D.app build/Exported-IPA/Payload/
-          cd build/Exported-IPA
-          zip -r ShadowVillage3D.ipa Payload
-          echo "=== IPA GENERATION SUCCESS ==="
+          mkdir -p build/IPA_Structure/Payload
+          # অ্যাপ বান্ডেলটিকে সরাসরি Payload ডিরেক্টরির নিচে কপি করা হচ্ছে (পাথ ওভারল্যাপ এড়াতে)
+          cp -R build/SV3D.xcarchive/Products/Applications/SV3D.app build/IPA_Structure/Payload/
+          cd build/IPA_Structure
+          zip -q -r ../ShadowVillage3D.ipa Payload
+          cd ../..
+          echo "=== IPA STRUCTURE REPAIRED & GENERATED ==="
 
       - name: Upload Artifact & Generate Direct Download Link
         uses: actions/upload-artifact@v4
         with:
           name: ShadowVillage3D-iOS-IPA
-          path: build/Exported-IPA/ShadowVillage3D.ipa
+          path: build/ShadowVillage3D.ipa
           retention-days: 7
