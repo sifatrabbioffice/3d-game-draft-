@@ -573,7 +573,7 @@ jobs:
                       self.startOverlay.removeFromSuperview()
                       self.hudView.isHidden = false
                       
-                      // native Virtual Controller কানেক্ট করা হলো
+                      // Native Virtual Controller কানেক্ট করা হলো
                       ControllerInput.shared.connect()
                       
                       self.waveTimer = 3.0
@@ -612,14 +612,14 @@ jobs:
                       gamepad.rightThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
                           self?.hardwareAimVector = SIMD2<Float>(x, -y)
                       }
-                      // Square Button / Button X -> রিলোড সিস্টেম ম্যাপ
+                      // Button X (Square) -> রিলোড সিস্টেম ম্যাপ
                       gamepad.buttonX.pressedChangedHandler = { [weak self] (_, _, isPressed) in
                           if isPressed { 
                               self?.performWeaponReload() 
                               ControllerInput.shared.triggerButtonHaptic(intensity: 0.5)
                           }
                       }
-                      // Cross Button / Button A -> ফায়ার সিস্টেম ম্যাপ (অপশনাল বাটন কম্ব্যাট)
+                      // Button A (Cross) -> ফায়ার সিস্টেম ম্যাপ
                       gamepad.buttonA.pressedChangedHandler = { [weak self] (_, _, isPressed) in
                           if isPressed && (self?.ammo ?? 0) > 0 && (self?.canShoot ?? false) {
                               DispatchQueue.main.async { self?.fireBullet() }
@@ -789,7 +789,7 @@ jobs:
                   let dt = Float(time - lastTime)
                   lastTime = time
 
-                  // ডুয়াল ভার্চুয়াল জয়স্টিক ভেক্টর থেকে ডেটা রিড করা হচ্ছে
+                  // ডুয়াল ভার্চুয়াল জয়স্টিক ভেক্টর রিড
                   let moveVec = hardwareMoveVector
                   let aimVec = hardwareAimVector
 
@@ -806,7 +806,7 @@ jobs:
                   let aimLength = sqrt(aimVec.x * aimVec.x + aimVec.y * aimVec.y)
                   if aimLength > 0.1 {
                       playerBody.eulerAngles.y = atan2(aimVec.x, aimVec.y)
-                      // Twin-Stick শুটার মেকানিক্স: ডান জয়স্টিক ঘোরানো মাত্রই অটো-ফায়ার একটিভেট হবে
+                      // Twin-Stick শুটিং: ডান জয়স্টিক ঘোরানো মাত্রই অটো-ফায়ার একটিভেট হবে
                       if time - lastShotTime > 0.16 && ammo > 0 && !isReloading {
                           lastShotTime = time
                           DispatchQueue.main.async { self.fireBullet() }
@@ -1026,26 +1026,26 @@ jobs:
           </plist>
           EOF
 
-      # ── Project Build Pipeline ───────────────────────────────────────────────
+      # ── Project Build Pipeline (Fixed Unsigned App Compilation) ──────────────
       - name: Generate Xcode Project File
         run: xcodegen generate
 
-      - name: Build Application and Archive
+      - name: Build Unsigned Application Bundle
         run: |
-          xcodebuild archive \
+          xcodebuild build \
             -project SV3D.xcodeproj \
             -scheme SV3D \
             -configuration Release \
-            -archivePath build/SV3D.xcarchive \
+            -sdk iphoneos \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" | xcpretty
+            CODE_SIGN_IDENTITY="" | xcpretty
 
       - name: Package App Package (Payload IPA)
         run: |
           mkdir -p build/Export/Payload
-          cp -R build/SV3D.xcarchive/Products/Applications/SV3D.app build/Export/Payload/
+          cp -R build/Build/Products/Release-iphoneos/SV3D.app build/Export/Payload/
           cd build/Export
           zip -r ../../ShadowVillage3D.ipa Payload
           cd ../..
