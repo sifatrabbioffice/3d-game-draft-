@@ -26,8 +26,8 @@ jobs:
 
       - name: Create Project Directories
         run: |
-          mkdir -p GameHub/Sources/Input
           mkdir -p GameHub/Sources
+          mkdir -p GameHub/Sources/Input
 
       # ── AppDelegate ──────────────────────────────────────────────────────────
       - name: Create AppDelegate.swift
@@ -49,105 +49,84 @@ jobs:
           }
           EOF
 
-      # ── Input System: PS5 DualSense Virtual Controller ───────────────────────
-      - name: Write Input Controller System
+      # ── Custom Touch Joystick System (No Apple GC Bug) ───────────────────────
+      - name: Write Touch Input System
         run: |
-          cat << 'EOF' > GameHub/Sources/Input/ControllerInput.swift
-          import GameController
-          import CoreHaptics
-          import Foundation
+          cat << 'EOF' > GameHub/Sources/Input/TouchJoystick.swift
+          import UIKit
 
-          class ControllerInput: ObservableObject {
-              static let shared = ControllerInput()
+          class TouchJoystick: UIView {
+              var onChange: (CGPoint) -> Void = { _ in }
               
-              @Published var leftStick: CGPoint = .zero
-              @Published var rightStick: CGPoint = .zero
-              @Published var pressedButtons: Set<String> = []
+              private let baseView = UIView()
+              private let stickView = UIView()
+              private var baseRadius: CGFloat = 50
+              private var stickRadius: CGFloat = 25
               
-              private var hapticEngine: CHHapticEngine?
-              private var gcController: GCVirtualController?
-              
-              private init() {
-                  setupHaptics()
-                  setupVirtualController()
+              override init(frame: CGRect) {
+                  super.init(frame: frame)
+                  setupUI()
               }
               
-              private func setupVirtualController() {
-                  let config = GCVirtualController.Configuration()
-                  config.elements = [
-                      GCInputLeftThumbstick,
-                      GCInputRightThumbstick,
-                      GCInputButtonA,
-                      GCInputButtonB,
-                      GCInputButtonX,
-                      GCInputButtonY
-                  ]
+              required init?(coder: NSCoder) { fatalError() }
+              
+              private func setupUI() {
+                  backgroundColor = .clear
                   
-                  gcController = GCVirtualController(configuration: config)
-                  gcController?.connect { [weak self] error in
-                      if let error = error {
-                          print("Failed to connect virtual controller: \(error.localizedDescription)")
-                          return
-                      }
-                      self?.setupInputHandlers()
-                  }
+                  baseView.frame = CGRect(x: 0, y: 0, width: baseRadius * 2, height: baseRadius * 2)
+                  baseView.backgroundColor = UIColor(white: 1.0, alpha: 0.15)
+                  baseView.layer.cornerRadius = baseRadius
+                  baseView.layer.borderColor = UIColor(white: 1.0, alpha: 0.4).cgColor
+                  baseView.layer.borderWidth = 2
+                  baseView.isUserInteractionEnabled = false
+                  addSubview(baseView)
+                  
+                  stickView.frame = CGRect(x: 0, y: 0, width: stickRadius * 2, height: stickRadius * 2)
+                  stickView.backgroundColor = UIColor(white: 1.0, alpha: 0.6)
+                  stickView.layer.cornerRadius = stickRadius
+                  stickView.isUserInteractionEnabled = false
+                  addSubview(stickView)
+                  
+                  resetStick()
               }
               
-              private func setupInputHandlers() {
-                  guard let controller = GCController.controllers().first?.extendedGamepad else { return }
-                  
-                  controller.leftThumbstick.valueChangedHandler = { [weak self] _, x, y in
-                      DispatchQueue.main.async {
-                          self?.leftStick = CGPoint(x: CGFloat(x), y: CGFloat(y))
-                      }
-                  }
-                  
-                  controller.rightThumbstick.valueChangedHandler = { [weak self] _, x, y in
-                      DispatchQueue.main.async {
-                          self?.rightStick = CGPoint(x: CGFloat(x), y: CGFloat(y))
-                      }
-                  }
-                  
-                  let buttonMap: [String: GCControllerButtonInput] = [
-                      "Cross": controller.buttonA,
-                      "Circle": controller.buttonB,
-                      "Square": controller.buttonX,
-                      "Triangle": controller.buttonY
-                  ]
-                  
-                  for (name, buttonInput) in buttonMap {
-                      buttonInput.valueChangedHandler = { [weak self] _, _, isPressed in
-                          DispatchQueue.main.async {
-                              if isPressed {
-                                  self?.pressedButtons.insert(name)
-                                  self?.triggerButtonHaptic()
-                              } else {
-                                  self?.pressedButtons.remove(name)
-                              }
-                          }
-                      }
-                  }
+              private func resetStick() {
+                  baseView.center = CGPoint(x: bounds.width / 2, y: bounds.height / 2)
+                  stickView.center = baseView.center
+                  onChange(.zero)
               }
               
-              private func setupHaptics() {
-                  guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
-                  hapticEngine = try? CHHapticEngine()
-                  try? hapticEngine?.start()
-              }
-              
-              func triggerButtonHaptic(intensity: Float = 0.7) {
-                  guard let engine = hapticEngine else { return }
-                  let event = CHHapticEvent(
-                      eventType: .hapticTransient,
-                      parameters: [
-                          CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
-                          CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
-                      ],
-                      relativeTime: 0
-                  )
-                  guard let pattern = try? CHHapticPattern(events: [event], parameters: []) else { return }
-                  let player = try? engine.makePlayer(with: pattern)
-                  try? player?.start(atTime: CHHapticTimeImmediate)
+              func handleTouch(_ touch: UITouch, isEnded: Bool = false) {
+                  if isEnded {
+                      resetStick()
+                      return
+                  }
+                  
+                  let loc = touch.location(in: self)
+                  let center = baseView.center
+                  
+                  let dx = loc.x - center.x
+                  let dy = loc.y - center.y
+                  let dist = sqrt(dx*dx + dy*dy)
+                  
+                  if dist == 0 {
+                      stickView.center = center
+                      onChange(.zero)
+                      return
+                  }
+                  
+                  let angle = atan2(dy, dx)
+                  let clampedDist = min(dist, baseRadius)
+                  
+                  let finalX = center.x + cos(angle) * clampedDist
+                  let finalY = center.y + sin(angle) * clampedDist
+                  
+                  stickView.center = CGPoint(x: finalX, y: finalY)
+                  
+                  // নরমালাইজড ভ্যালু (-1 থেকে 1) মেইন প্লেয়ারকে মুভ করার জন্য
+                  let normX = cos(angle) * (clampedDist / baseRadius)
+                  let normY = sin(angle) * (clampedDist / baseRadius)
+                  onChange(CGPoint(x: normX, y: -normY)) 
               }
           }
           EOF
@@ -389,7 +368,7 @@ jobs:
           }
           EOF
 
-      # ── GameViewController ──────────────────────────────────────────────────
+      # ── GameViewController (Fully Touch Driven Custom UI Joystick) ───────────
       - name: Create GameViewController.swift
         run: |
           cat << 'EOF' > GameHub/Sources/GameViewController.swift
@@ -406,6 +385,12 @@ jobs:
               private var cameraNode: SCNNode!
               private var citizens: [EnemyNode] = []
               
+              private var leftJoystick: TouchJoystick!
+              private var rightJoystick: TouchJoystick!
+              
+              private var leftVector: CGPoint = .zero
+              private var rightVector: CGPoint = .zero
+              
               private var wantedLevel = 0
               private var playerHP: Float = 100.0
               private let maxPlayerHP: Float = 100.0
@@ -414,7 +399,6 @@ jobs:
               private var lastFireTime: TimeInterval = 0
               private let fireRate: TimeInterval = 0.12
               private var lastUpdateTime: TimeInterval = 0
-              private let input = ControllerInput.shared
               
               override func viewDidLoad() {
                   super.viewDidLoad()
@@ -424,6 +408,7 @@ jobs:
                   setupOpenWorldMaps()
                   setupHumanPlayer()
                   setupHUD()
+                  setupTouchJoysticks()
                   
                   spawnWorldPopulation(count: 35)
               }
@@ -476,6 +461,7 @@ jobs:
               }
               
               private func setupHumanPlayer() {
+                  // মেইন ব্লু ক্যারেক্টার মডেল
                   let bodyGeo = SCNCapsule(capRadius: 0.38, height: 1.75)
                   let bodyMat = SCNMaterial()
                   bodyMat.diffuse.contents = UIColor.blue
@@ -491,6 +477,7 @@ jobs:
                   
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: bodyGeo, options: nil))
                   pBody.allowsResting = false
+                  pBody.friction = 0.0
                   pBody.angularVelocityFactor = SCNVector3(0, 0, 0)
                   pBody.categoryBitMask = PhysicsMask.player
                   pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground | PhysicsMask.enemy
@@ -503,6 +490,47 @@ jobs:
                   cameraNode.position = SCNVector3(0, 16, 11)
                   cameraNode.look(at: playerNode.position)
                   scene.rootNode.addChildNode(cameraNode)
+              }
+              
+              private func setupTouchJoysticks() {
+                  // স্ক্রিনের বামে ও ডানে ১০০% ডিরেক্ট রেসপনসিভ টাচ জয়স্টিক প্লেসমেন্ট
+                  let padW: CGFloat = 140
+                  let padH: CGFloat = 140
+                  let bottomSpace: CGFloat = 30
+                  
+                  leftJoystick = TouchJoystick(frame: CGRect(x: 40, y: view.bounds.height - padH - bottomSpace, width: padW, height: padH))
+                  leftJoystick.autoresizingMask = [.flexibleTopMargin, .flexibleRightMargin]
+                  leftJoystick.onChange = { [weak self] vec in self?.leftVector = vec }
+                  view.addSubview(leftJoystick)
+                  
+                  rightJoystick = TouchJoystick(frame: CGRect(x: view.bounds.width - padW - 40, y: view.bounds.height - padH - bottomSpace, width: padW, height: padH))
+                  rightJoystick.autoresizingMask = [.flexibleTopMargin, .flexibleLeftMargin]
+                  rightJoystick.onChange = { [weak self] vec in self?.rightVector = vec }
+                  view.addSubview(rightJoystick)
+              }
+              
+              override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+                  handleTouches(touches, isEnded: false)
+              }
+              override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+                  handleTouches(touches, isEnded: false)
+              }
+              override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+                  handleTouches(touches, isEnded: true)
+              }
+              override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+                  handleTouches(touches, isEnded: true)
+              }
+              
+              private func handleTouches(_ touches: Set<UITouch>, isEnded: Bool) {
+                  for touch in touches {
+                      let loc = touch.location(in: view)
+                      if loc.x < view.bounds.width / 2 {
+                          leftJoystick.handleTouch(touch, isEnded: isEnded)
+                      } else {
+                          rightJoystick.handleTouch(touch, isEnded: isEnded)
+                      }
+                  }
               }
               
               private func spawnWorldPopulation(count: Int) {
@@ -534,16 +562,15 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
-                  // 🚨 ফিক্সড মুভমেন্ট: ডাইরেক্ট ফিজিক্স ভেলোসিটি অ্যাসাইনমেন্ট (জয়স্টিক এখন শতভাগ কাজ করবে)
-                  let lStick = input.leftStick
-                  if lStick != .zero {
-                      let runSpeed: Float = 7.5
-                      let moveX = Float(lStick.x) * runSpeed
-                      let moveZ = -Float(lStick.y) * runSpeed
+                  // ১. কাস্টম টাচ জয়স্টিক দিয়ে ব্লু ক্যারেক্টার ১০০% নিখুঁতভাবে মুভ করবে
+                  if leftVector != .zero {
+                      let runSpeed: Float = 8.5
+                      let moveX = Float(leftVector.x) * runSpeed
+                      let moveZ = -Float(leftVector.y) * runSpeed
                       
                       playerNode.physicsBody?.velocity = SCNVector3(moveX, playerNode.physicsBody?.velocity.y ?? 0, moveZ)
                       
-                      if input.rightStick == .zero {
+                      if rightVector == .zero {
                           playerNode.eulerAngles.y = atan2(-moveX, -moveZ)
                       }
                   } else {
@@ -551,15 +578,16 @@ jobs:
                       playerNode.physicsBody?.velocity.z = 0
                   }
                   
-                  let rStick = input.rightStick
-                  if rStick != .zero {
-                      playerNode.eulerAngles.y = atan2(-Float(rStick.x), Float(rStick.y))
+                  // ২. ডান কাস্টম টাচ জয়স্টিক ড্রাগ করলে অটোমেটিক ফাইট/শুট করবে
+                  if rightVector != .zero {
+                      playerNode.eulerAngles.y = atan2(-Float(rightVector.x), Float(rightVector.y))
                       if time - lastFireTime >= fireRate {
                           lastFireTime = time
                           executeShoot()
                       }
                   }
                   
+                  // মসৃণ ক্যামেরা ফলো
                   let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 16, playerNode.position.z + 11)
                   cameraNode.position.x += (targetCamPos.x - cameraNode.position.x) * 0.1
                   cameraNode.position.z += (targetCamPos.z - cameraNode.position.z) * 0.1
@@ -607,7 +635,7 @@ jobs:
                   scene.rootNode.addChildNode(bullet)
                   
                   let angle = playerNode.eulerAngles.y
-                  let speed: Float = 30.0
+                  let speed: Float = 32.0
                   bBody.velocity = SCNVector3(-sin(angle) * speed, 0, -cos(angle) * speed)
                   
                   bullet.runAction(SCNAction.sequence([SCNAction.wait(duration: 1.2), SCNAction.removeFromParentNode()]))
@@ -622,6 +650,8 @@ jobs:
                   isGameOver = false
                   playerHP = maxPlayerHP
                   wantedLevel = 0
+                  leftVector = .zero
+                  rightVector = .zero
                   
                   for citizen in citizens { citizen.removeFromParentNode() }
                   citizens.removeAll()
