@@ -960,6 +960,8 @@ jobs:
                 base:
                   INFOPLIST_FILE: SV3D/Info.plist
                   PRODUCT_BUNDLE_IDENTIFIER: com.shadowvillage.game.sv3d
+                  PRODUCT_NAME: SV3D
+                  EXECUTABLE_NAME: SV3D
                   MARKETING_VERSION: "1.0.0"
                   CURRENT_PROJECT_VERSION: "1"
                   TARGETED_DEVICE_FAMILY: "1,2"
@@ -975,7 +977,11 @@ jobs:
           <dict>
               <key>CFBundleIdentifier</key>
               <string>com.shadowvillage.game.sv3d</string>
+              <key>CFBundleExecutable</key>
+              <string>SV3D</string>
               <key>CFBundleName</key>
+              <string>SV3D</string>
+              <key>CFBundleDisplayName</key>
               <string>ShadowVillage3D</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
@@ -1019,7 +1025,6 @@ jobs:
       - name: Package App Bundle into Installable IPA
         run: |
           mkdir -p build/IPA_Structure/Payload
-          # অ্যাপ বান্ডেলটিকে সরাসরি Payload ডিরেক্টরির নিচে কপি করা হচ্ছে (পাথ ওভারল্যাপ এড়াতে)
           cp -R build/SV3D.xcarchive/Products/Applications/SV3D.app build/IPA_Structure/Payload/
           cd build/IPA_Structure
           zip -q -r ../ShadowVillage3D.ipa Payload
