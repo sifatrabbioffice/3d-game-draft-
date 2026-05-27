@@ -478,7 +478,7 @@ jobs:
           cat > SV3D/Sources/GameViewController.swift << 'SWIFT_EOF'
           import UIKit
           import SceneKit
-          import GameController // PS4 গেমপ্যাড সাপোর্ট ইমপোর্ট করা হলো
+          import GameController
 
           class GameViewController: UIViewController, SCNSceneRendererDelegate, SCNPhysicsContactDelegate {
 
@@ -490,8 +490,7 @@ jobs:
               private var cameraArm:  SCNNode!
               private var cameraNode: SCNNode!
 
-              // গেম স্টেট ভেরিয়েবল
-              private var isGameStarted: Bool         = false // স্টার্ট পেজের জন্য ফ্ল্যাগ
+              private var isGameStarted: Bool         = false
               private var health       : Float        = 100
               private var maxHealth    : Float        = 100
               private var ammo         : Int          = 30
@@ -509,15 +508,13 @@ jobs:
               private var bullets      : [SCNNode]    = []
               private var lastShotTime : TimeInterval = 0
 
-              // UI কন্ট্রোল এলিমেন্ট
-              private var startOverlay : UIView!      // মেইন স্টার্ট পেজ ভিউ
+              private var startOverlay : UIView!
               private var moveJoystick : JoystickView!
               private var aimJoystick  : JoystickView!
               private var hudView      : HUDOverlay!
               private var cameraYaw    : Float   = 0
               private let cameraPitch  : Float   = -0.22
 
-              // গেমপ্যাড স্টেট রিডিং ভেরিয়েবলস
               private var hardwareMoveVector: SIMD2<Float> = .zero
               private var hardwareAimVector : SIMD2<Float> = .zero
               private var isGamepadConnected: Bool = false
@@ -533,8 +530,8 @@ jobs:
                   setupLighting()
                   setupHUD()
                   setupJoysticks()
-                  setupStartScreen()     // স্টার্ট পেজ লোড করা হলো
-                  setupGamepadObservers() // ফিজিক্যাল কন্ট্রোলার লিসেনার অ্যাক্টিভেট করা হলো
+                  setupStartScreen()
+                  setupGamepadObservers()
               }
 
               override var prefersStatusBarHidden: Bool { return true }
@@ -542,7 +539,6 @@ jobs:
               override var supportedInterfaceOrientations: UIInterfaceOrientationMask { return .landscape }
               override var prefersHomeIndicatorAutoHidden: Bool { return true }
 
-              // ── Start Screen UI Setup ──────────────────────────────────────────
               private func setupStartScreen() {
                   startOverlay = UIView(frame: view.bounds)
                   startOverlay.backgroundColor = UIColor(red: 0.04, green: 0.03, blue: 0.08, alpha: 0.95)
@@ -594,7 +590,6 @@ jobs:
                   }) { _ in
                       self.startOverlay.removeFromSuperview()
                       self.hudView.isHidden = false
-                      // গেমপ্যাড কানেক্টেড থাকলে অন-স্ক্রিন টাচ কন্ট্রোল হাইড থাকবে
                       if !self.isGamepadConnected {
                           self.moveJoystick.isHidden = false
                           self.aimJoystick.isHidden = false
@@ -604,7 +599,6 @@ jobs:
                   }
               }
 
-              // ── GameController Framework Integration (PS4/MFi Support) ─────────
               private func setupGamepadObservers() {
                   NotificationCenter.default.addObserver(self, selector: #selector(gamepadDidConnect(_:)), name: .GCControllerDidConnect, object: nil)
                   NotificationCenter.default.addObserver(self, selector: #selector(gamepadDidDisconnect(_:)), name: .GCControllerDidDisconnect, object: nil)
@@ -639,20 +633,15 @@ jobs:
                       }
                   }
 
-                  // Extended Gamepad profile (PS4, Xbox, MFi গেমপ্যাড রিড করার জন্য)
                   if let gamepad = controller.extendedGamepad {
-                      // Left Stick Movement Logic
                       gamepad.leftThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
-                          // ইনভার্টেড ওয়াই অ্যাক্সিস ফিক্স করতে মাইনাস সাইন
                           self?.hardwareMoveVector = SIMD2<Float>(x, -y)
                       }
 
-                      // Right Stick Aim & Shoot Logic
                       gamepad.rightThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
                           self?.hardwareAimVector = SIMD2<Float>(x, -y)
                       }
 
-                      // PS4 Cross বাটন / A বাটন প্রেস করে স্টার্ট পেজ স্কিপ করার ফিচার
                       gamepad.buttonA.pressedChangedHandler = { [weak self] (_, _, isPressed) in
                           if isPressed && !(self?.isGameStarted ?? true) {
                               DispatchQueue.main.async {
@@ -865,7 +854,6 @@ jobs:
                   let dt = Float(min(time - lastTime, 1.0 / 30.0))
                   lastTime = time
 
-                  // গেম স্টার্ট না হলে বা ওভার হয়ে গেলে ফ্রেম আপডেট থমকে থাকবে
                   guard isGameStarted && !isGameOver else { return }
 
                   handleMovement(dt: dt)
@@ -878,7 +866,6 @@ jobs:
               private func handleMovement(dt: Float) {
                   guard let pBody = playerNode.physicsBody else { return }
                   
-                  // ফিজিক্যাল এবং ভার্চুয়াল জয়স্টিকের ডেটা কম্বাইন করা হচ্ছে
                   let moveX = isGamepadConnected ? hardwareMoveVector.x : moveJoystick.velocity.x
                   let moveZ = isGamepadConnected ? hardwareMoveVector.y : moveJoystick.velocity.y
                   let isActive = isGamepadConnected ? (unsupportedLength(hardwareMoveVector) > 0.15) : moveJoystick.isActive
@@ -1070,9 +1057,9 @@ jobs:
                   }
               }
 
+              // ── এখানে 'contact' স্কোপ ফিক্স করা হলো ──────────────────────────
               private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  let enemyTarget = enemy as? EnemyNode ?? contact.nodeA as? EnemyNode
-                  guard let target = enemyTarget, target.isAlive else { return }
+                  guard let target = enemy as? EnemyNode, target.isAlive else { return }
                   bullet.removeFromParentNode()
                   
                   target.takeDamage(34)
