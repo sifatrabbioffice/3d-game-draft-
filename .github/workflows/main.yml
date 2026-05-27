@@ -554,29 +554,29 @@ jobs:
               }
               
               private func setupWorld() {
-                  // এনভায়রনমেন্ট ডার্ক অ্যান্ড সিনেমাটিক করার জন্য আলোর তীব্রতা কমানো হয়েছে (Baked Ambient Mode)
+                  // আলো অপ্টিমাইজ করা হয়েছে (যাতে অতিরিক্ত অন্ধকার না লাগে এবং ক্যারেক্টার ও গ্রাউন্ড সুন্দর দেখা যায়)
                   let ambLight = SCNLight()
                   ambLight.type = .ambient
-                  ambLight.color = UIColor(white: 0.06, alpha: 1.0) 
+                  ambLight.color = UIColor(white: 0.28, alpha: 1.0) // আম্বিয়েন্ট লাইট বাড়িয়ে ভিজিবিলিটি ক্লিয়ার করা হয়েছে
                   let ambNode = SCNNode()
                   ambNode.light = ambLight
                   scene.rootNode.addChildNode(ambNode)
                   
                   let dirLight = SCNLight()
                   dirLight.type = .directional
-                  dirLight.color = UIColor(red: 0.25, green: 0.25, blue: 0.40, alpha: 1.0) 
-                  dirLight.intensity = 400
+                  dirLight.color = UIColor(red: 0.65, green: 0.65, blue: 0.85, alpha: 1.0) 
+                  dirLight.intensity = 1000 // ডিরেকশনাল লাইট ১০০০ লাক্স করা হয়েছে সিনেমাটিক ক্লিয়ারিটির জন্য
                   dirLight.castsShadow = true
                   let dirNode = SCNNode()
                   dirNode.light = dirLight
-                  dirNode.position = SCNVector3(12, 25, 12)
+                  dirNode.position = SCNVector3(15, 30, 15)
                   dirNode.look(at: SCNVector3(0, 0, 0))
                   scene.rootNode.addChildNode(dirNode)
                   
                   let floorGeo = SCNFloor()
                   floorGeo.reflectivity = 0.05
                   let floorMat = SCNMaterial()
-                  floorMat.diffuse.contents = UIColor(white: 0.08, alpha: 1.0)
+                  floorMat.diffuse.contents = UIColor(white: 0.15, alpha: 1.0)
                   floorGeo.materials = [floorMat]
                   let floorNode = SCNNode(geometry: floorGeo)
                   floorNode.physicsBody = SCNPhysicsBody(type: .static, shape: nil)
@@ -585,7 +585,7 @@ jobs:
                   
                   let wallGeo = SCNBox(width: 44, height: 6, length: 2, chamferRadius: 0)
                   let wallMat = SCNMaterial()
-                  wallMat.diffuse.contents = UIColor(white: 0.15, alpha: 1.0)
+                  wallMat.diffuse.contents = UIColor(white: 0.25, alpha: 1.0)
                   wallGeo.materials = [wallMat]
                   
                   let northWall = SCNNode(geometry: wallGeo)
@@ -668,19 +668,21 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
-                  // কন্ট্রোলার মুভমেন্ট ডিরেক্ট ট্রান্সফর্ম পজিশন ফিক্স
+                  // কন্ট্রোলার জয়স্টিক মুভমেন্ট ডিরেক্ট ফিজিক্স ভেলোসিটি ফিক্স (১০০% ওয়ার্কিং)
                   let lStick = input.leftStick
                   if lStick != .zero {
-                      let speedMultiplier: Float = 6.5
-                      let dx = Float(lStick.x) * speedMultiplier * dt
-                      let dz = -Float(lStick.y) * speedMultiplier * dt
+                      let speedMultiplier: Float = 7.0
+                      let velX = Float(lStick.x) * speedMultiplier
+                      let velZ = -Float(lStick.y) * speedMultiplier
                       
-                      playerNode.position.x += dx
-                      playerNode.position.z += dz
+                      playerNode.physicsBody?.velocity = SCNVector3(velX, playerNode.physicsBody?.velocity.y ?? 0, velZ)
                       
                       if input.rightStick == .zero {
-                          playerNode.eulerAngles.y = atan2(-Float(lStick.x), Float(lStick.y))
+                          playerNode.eulerAngles.y = atan2(-velX, -velZ)
                       }
+                  } else {
+                      playerNode.physicsBody?.velocity.x = 0
+                      playerNode.physicsBody?.velocity.z = 0
                   }
                   
                   let rStick = input.rightStick
@@ -772,6 +774,7 @@ jobs:
                   enemies.removeAll()
                   
                   playerNode.position = SCNVector3(0, 0.85, 0)
+                  playerNode.physicsBody?.velocity = SCNVector3(0, 0, 0)
                   playerNode.opacity = 1.0
                   
                   hud.renewBtn.isHidden = true
@@ -909,4 +912,3 @@ jobs:
           name: ShadowVillage3D-iOS-IPA
           path: build/ShadowVillage3D.ipa
           retention-days: 7
-          
