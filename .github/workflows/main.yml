@@ -28,6 +28,23 @@ jobs:
         run: |
           mkdir -p SV3D/Sources
           mkdir -p SV3D/Resources/Assets.xcassets/AppIcon.appiconset
+          cat > SV3D/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json << 'EOF'
+          {
+            "images" : [
+              {
+                "size" : "1024x1024",
+                "idiom" : "ios-marketing",
+                "filename" : "icon.png",
+                "scale" : "1x"
+              }
+            ],
+            "info" : {
+              "version" : 1,
+              "author" : "xcode"
+            }
+          }
+          EOF
+          touch SV3D/Resources/Assets.xcassets/AppIcon.appiconset/icon.png
 
       # ── AppDelegate ──────────────────────────────────────────────────────────
       - name: Create AppDelegate.swift
@@ -142,6 +159,7 @@ jobs:
         run: |
           cat > SV3D/Sources/JoystickView.swift << 'SWIFT_EOF'
           import UIKit
+          import simd
 
           class JoystickView: UIView {
               private let ring = UIView()
@@ -929,8 +947,7 @@ jobs:
               }
 
               private func handleBulletEnemyImpact(bullet: SCNNode, enemy: SCNNode) {
-                  let enemyNode = enemy as? EnemyNode ?? (contact.nodeA as? EnemyNode)
-                  guard let enemyTarget = enemyNode, enemyTarget.isAlive else { return }
+                  guard let enemyTarget = enemy as? EnemyNode, enemyTarget.isAlive else { return }
                   bullet.removeFromParentNode()
                   
                   enemyTarget.takeDamage(34)
@@ -1006,13 +1023,15 @@ jobs:
 
       - name: Archive Project for Real Device (No-Sign Method)
         run: |
+          set -o pipefail
           xcodebuild archive \
             -project SV3D.xcodeproj \
             -scheme SV3D \
             -archivePath build/SV3D.xcarchive \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGNING_REQUIRED=NO \
+            | xcpretty
 
       - name: Package App Bundle into Installable IPA
         run: |
