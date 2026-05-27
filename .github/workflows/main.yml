@@ -904,6 +904,53 @@ jobs:
       - name: Generate Xcode Project
         run: xcodegen generate
 
+
+         # ── Build ─────────────────────────────────────────────────────────────────
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project SV3D/ShadowVillage3D.xcodeproj \
+            -scheme ShadowVillage3D \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            ENABLE_BITCODE=NO \
+            SWIFT_VERSION=5.9 \
+            OBJROOT="${{ github.workspace }}/build/obj" \
+            SYMROOT="${{ github.workspace }}/build/sym" \
+            clean build 2>&1 | tee build.log | xcpretty || \
+            (echo "=== BUILD ERRORS ===" && grep "error:" build.log | head -30 && exit 1)
+
+      # ── Package IPA ───────────────────────────────────────────────────────────
+      - name: Package IPA
+        run: |
+          APP=$(find "${{ github.workspace }}/build/sym" -name "ShadowVillage3D.app" -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "❌ .app not found"
+            grep "error:" build.log | head -20
+            exit 1
+          fi
+          echo "✅ Found: $APP ($(du -sh "$APP" | cut -f1))"
+          mkdir -p Payload
+          cp -r "$APP" Payload/ShadowVillage3D.app
+          rm -rf Payload/ShadowVillage3D.app/_CodeSignature 2>/dev/null || true
+          zip -r ShadowVillage3D.ipa Payload
+          echo "📦 IPA: $(du -sh ShadowVillage3D.ipa | cut -f1)"
+
+
+              # ── Upload ────────────────────────────────────────────────────────────────
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShadowVillage3D-iPhone15ProMax
+          path: ShadowVillage3D.ipa
+          retention-days: 30
+
       - name: Build App Simulator Target Archive
         run: |
           set -o pipefail
