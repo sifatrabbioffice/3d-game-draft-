@@ -500,7 +500,7 @@ jobs:
                   return t - lastAttackTime >= kind.attackInterval
               }
           }
-          SWIFT_EOF
+          SW_EOF
 
       # ── GameViewController ──────────────────────────────────────────────────
       - name: Create GameViewController.swift
@@ -533,7 +533,7 @@ jobs:
               private let fireRate: TimeInterval = 0.18
               
               private var lastUpdateTime: TimeInterval = 0
-              private let input = ControllerInput.shared // ভার্চুয়াল কন্ট্রোলার সিঙ্ক্রোনাইজেশন
+              private let input = ControllerInput.shared
               
               override func viewDidLoad() {
                   super.viewDidLoad()
@@ -620,7 +620,7 @@ jobs:
                   playerNode.position = SCNVector3(0, 0.85, 0)
                   
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: capsule, options: nil))
-                  pBody.isAngularRestorationForceConstant = 1.0
+                  pBody.allowsResting = true // এরর দূর করতে ফিক্সড করা হয়েছে
                   pBody.angularVelocityFactor = SCNVector3(0, 1, 0)
                   pBody.categoryBitMask = PhysicsMask.player
                   pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground | PhysicsMask.enemy
@@ -662,7 +662,6 @@ jobs:
                   refreshHUD()
               }
               
-              // MARK: - Core Loop Pipeline (Controller Mapping)
               func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
                   if isGameOver { return }
                   
@@ -670,12 +669,11 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
-                  // ১. নতুন PS5 কন্ট্রোলারের বাম স্টিক দিয়ে প্লেয়ার মুভমেন্ট
                   let lStick = input.leftStick
                   if lStick != .zero {
                       let spd: Float = 6.2
                       let velX = Float(lStick.x) * spd
-                      let velZ = -Float(lStick.y) * spd // Invert Y vector for standard 3D space
+                      let velZ = -Float(lStick.y) * spd
                       playerNode.physicsBody?.velocity = SCNVector3(velX, playerNode.physicsBody?.velocity.y ?? 0, velZ)
                       
                       if input.rightStick == .zero {
@@ -686,7 +684,6 @@ jobs:
                       playerNode.physicsBody?.velocity.z = 0
                   }
                   
-                  // ২. ডান জয়স্টিক ড্রাইভেন শুটিং ভেক্টর
                   let rStick = input.rightStick
                   if rStick != .zero {
                       playerNode.eulerAngles.y = atan2(-Float(rStick.x), Float(rStick.y))
@@ -696,12 +693,10 @@ jobs:
                       }
                   }
                   
-                  // ৩. বাটন কম্ব্যাট ট্রিগার (Cross বাটন রিলেটেড অটো রিলোড)
                   if input.pressedButtons.contains("Cross") && !isReloading && currentAmmo < maxAmmo {
                       triggerWeaponReload()
                   }
                   
-                  // ক্যামেরা এবং এআই ট্র্যাকিং
                   let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 14, playerNode.position.z + 9)
                   cameraNode.position.x += (targetCamPos.x - cameraNode.position.x) * 0.12
                   cameraNode.position.z += (targetCamPos.z - cameraNode.position.z) * 0.12
