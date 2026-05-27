@@ -512,6 +512,11 @@ jobs:
               private var moveJoystick : JoystickView!
               private var aimJoystick  : JoystickView!
               private var hudView      : HUDOverlay!
+              
+              // ── অন-স্ক্রিন বাটন এলিমেন্টসমূহ ──
+              private var reloadButton : UIButton!
+              private var actionButton : UIButton!
+
               private var cameraYaw    : Float   = 0
               private let cameraPitch  : Float   = -0.22
 
@@ -530,6 +535,7 @@ jobs:
                   setupLighting()
                   setupHUD()
                   setupJoysticks()
+                  setupActionButtons() // বাটন লোড করা হলো
                   setupStartScreen()
                   setupGamepadObservers()
               }
@@ -553,15 +559,6 @@ jobs:
                   titleLabel.autoresizingMask = [.flexibleWidth, .flexibleBottomMargin]
                   startOverlay.addSubview(titleLabel)
 
-                  let subTitleLabel = UILabel()
-                  subTitleLabel.text = "[ CONNECT PS4 CONTROLLER OR USE TOUCH ]"
-                  subTitleLabel.textColor = UIColor.cyan.withAlphaComponent(0.7)
-                  subTitleLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-                  subTitleLabel.textAlignment = .center
-                  subTitleLabel.frame = CGRect(x: 0, y: view.bounds.height * 0.38, width: view.bounds.width, height: 25)
-                  subTitleLabel.autoresizingMask = [.flexibleWidth, .flexibleBottomMargin]
-                  startOverlay.addSubview(subTitleLabel)
-
                   let startButton = UIButton(type: .custom)
                   startButton.setTitle("INITIALIZE SYSTEM", for: .normal)
                   startButton.setTitleColor(.white, for: .normal)
@@ -579,6 +576,8 @@ jobs:
                   hudView.isHidden = true
                   moveJoystick.isHidden = true
                   aimJoystick.isHidden = true
+                  reloadButton.isHidden = true
+                  actionButton.isHidden = true
               }
 
               @objc private func startGameButtonPressed() {
@@ -593,6 +592,8 @@ jobs:
                       if !self.isGamepadConnected {
                           self.moveJoystick.isHidden = false
                           self.aimJoystick.isHidden = false
+                          self.reloadButton.isHidden = false
+                          self.actionButton.isHidden = false
                       }
                       self.waveTimer = 3.0
                       self.hudView.showMessage("INCOMING ANOMALY DETECTED", color: .red, duration: 2.5)
@@ -620,6 +621,8 @@ jobs:
                       if self.isGameStarted {
                           self.moveJoystick.isHidden = false
                           self.aimJoystick.isHidden = false
+                          self.reloadButton.isHidden = false
+                          self.actionButton.isHidden = false
                       }
                   }
               }
@@ -630,6 +633,8 @@ jobs:
                       if self.isGameStarted {
                           self.moveJoystick.isHidden = true
                           self.aimJoystick.isHidden = true
+                          self.reloadButton.isHidden = true
+                          self.actionButton.isHidden = true
                       }
                   }
 
@@ -637,17 +642,11 @@ jobs:
                       gamepad.leftThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
                           self?.hardwareMoveVector = SIMD2<Float>(x, -y)
                       }
-
                       gamepad.rightThumbstick.valueChangedHandler = { [weak self] (_, x, y) in
                           self?.hardwareAimVector = SIMD2<Float>(x, -y)
                       }
-
-                      gamepad.buttonA.pressedChangedHandler = { [weak self] (_, _, isPressed) in
-                          if isPressed && !(self?.isGameStarted ?? true) {
-                              DispatchQueue.main.async {
-                                  self?.startGameButtonPressed()
-                              }
-                          }
+                      gamepad.buttonX.pressedChangedHandler = { [weak self] (_, _, isPressed) in
+                          if isPressed { self?.performWeaponReload() }
                       }
                   }
               }
@@ -678,7 +677,7 @@ jobs:
               private func buildGround() {
                   let geo = SCNFloor()
                   let mat = SCNMaterial()
-                  mat.diffuse.contents   = UIColor(red: 0.10, green: 0.09, blue: 0.12, alpha: 1)
+                  mat.diffuse.contents   = UIColor(red: 0.18, green: 0.17, blue: 0.22, alpha: 1) // গ্রাউন্ডের ব্রাইটনেস একটু বাড়ানো হলো
                   mat.lightingModel      = .lambert
                   geo.materials = [mat]
                   let node = SCNNode(geometry: geo)
@@ -699,7 +698,7 @@ jobs:
                   for (x, y, z, w, hh, d) in walls {
                       let geo = SCNBox(width: CGFloat(w), height: CGFloat(hh), length: CGFloat(d), chamferRadius: 0)
                       let mat = SCNMaterial()
-                      mat.diffuse.contents = UIColor(red: 0.12, green: 0.11, blue: 0.15, alpha: 1)
+                      mat.diffuse.contents = UIColor(red: 0.22, green: 0.20, blue: 0.25, alpha: 1)
                       geo.materials = [mat]
                       let node = SCNNode(geometry: geo)
                       node.position = SCNVector3(x, y, z)
@@ -719,7 +718,7 @@ jobs:
                   for (x, z, w, h) in data {
                       let geo = SCNBox(width: CGFloat(w), height: CGFloat(h), length: CGFloat(w * 0.85), chamferRadius: 0.1)
                       let mat = SCNMaterial()
-                      mat.diffuse.contents = UIColor(red: 0.15, green: 0.14, blue: 0.18, alpha: 1)
+                      mat.diffuse.contents = UIColor(red: 0.25, green: 0.24, blue: 0.28, alpha: 1)
                       geo.materials = [mat]
                       let node = SCNNode(geometry: geo)
                       node.position = SCNVector3(x, h/2, z)
@@ -755,6 +754,10 @@ jobs:
                   pBody.allowsResting = false
                   pBody.friction = 0
                   pBody.rollingFriction = 0
+                  
+                  // 🔥 [FIX] ক্যারেক্টারের কন্টিনিউয়াস স্পিন/চক্কর কাটা চিরতরে বন্ধ করার লক
+                  pBody.angularVelocityFactor = SCNVector3(0, 0, 0)
+                  
                   pBody.categoryBitMask = PhysicsMask.player
                   pBody.contactTestBitMask = PhysicsMask.enemy | PhysicsMask.item
                   pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground
@@ -777,20 +780,21 @@ jobs:
                   cameraArm.addChildNode(cameraNode)
               }
 
+              // ── [FIX] এনভায়রনমেন্ট এর আলো অনেক বাড়ানো হলো ──
               private func setupLighting() {
                   let ambient = SCNNode()
                   ambient.light = SCNLight()
                   ambient.light?.type = .ambient
-                  ambient.light?.intensity = 180
-                  ambient.light?.color = UIColor(red: 0.6, green: 0.5, blue: 0.7, alpha: 1)
+                  ambient.light?.intensity = 500  // ১৮০ থেকে বাড়িয়ে ৫০০ করা হয়েছে (উজ্জ্বল আলো)
+                  ambient.light?.color = UIColor(red: 0.75, green: 0.72, blue: 0.85, alpha: 1)
                   scene.rootNode.addChildNode(ambient)
 
                   let sun = SCNNode()
                   sun.light = SCNLight()
                   sun.light?.type = .directional
-                  sun.light?.intensity = 400
-                  sun.light?.color = UIColor(red: 0.8, green: 0.8, blue: 1.0, alpha: 1)
-                  sun.position = SCNVector3(10, 30, 10)
+                  sun.light?.intensity = 800  // ৪০০ থেকে বাড়িয়ে ৮০০ করা হয়েছে যাতে ছায়া ও ম্যাপ একদম পরিষ্কার হয়
+                  sun.light?.color = UIColor(red: 0.9, green: 0.9, blue: 1.0, alpha: 1)
+                  sun.position = SCNVector3(10, 35, 10)
                   sun.eulerAngles = SCNVector3(-Float.pi/3, Float.pi/4, 0)
                   scene.rootNode.addChildNode(sun)
               }
@@ -802,11 +806,10 @@ jobs:
                   hudView.update(health: health, maxHealth: maxHealth, ammo: ammo, totalAmmo: totalAmmo, score: score, wave: wave, isReloading: isReloading)
               }
 
-              // ── এখানে জয়স্টিক সাইজ বড় করা হলো এবং স্ক্রিন পজিশন সামঞ্জস্য করা হলো ──
               private func setupJoysticks() {
-                  let rad: CGFloat = 85  // সাইজ বড় করা হয়েছে (আগে ছিল 70) যাতে টাচ এরিয়া বাড়ে
-                  let bottomOffset: CGFloat = 45  // নিচের মার্জিন বাড়ানো হয়েছে (উপরে তোলা হয়েছে)
-                  let sideOffset: CGFloat = 55    // স্ক্রিনের দুই পাশ থেকে কিছুটা ভেতরে আনা হয়েছে
+                  let rad: CGFloat = 85
+                  let bottomOffset: CGFloat = 45
+                  let sideOffset: CGFloat = 55
                   
                   let h = view.bounds.height
                   let w = view.bounds.width
@@ -822,10 +825,57 @@ jobs:
                   view.addSubview(aimJoystick)
               }
 
+              // ── [NEW UI] অন-স্ক্রিন অ্যাকশন এবং রিলোড বাটন লেআউট ──
+              private func setupActionButtons() {
+                  let btnSize: CGFloat = 55
+                  let h = view.bounds.height
+                  let w = view.bounds.width
+                  
+                  // রিলোড বাটন (ডানদিকের জয়স্টিকের বাম-উপরে পজিশন করা হয়েছে)
+                  reloadButton = UIButton(type: .custom)
+                  reloadButton.frame = CGRect(x: w - 260, y: h - 110, width: btnSize, height: btnSize)
+                  reloadButton.backgroundColor = UIColor(white: 0.1, alpha: 0.6)
+                  reloadButton.layer.cornerRadius = btnSize / 2
+                  reloadButton.layer.borderWidth = 2
+                  reloadButton.layer.borderColor = UIColor.orange.cgColor
+                  reloadButton.setTitle("R", for: .normal)
+                  reloadButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+                  reloadButton.setTitleColor(.orange, for: .normal)
+                  reloadButton.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
+                  reloadButton.addTarget(self, action: #selector(reloadButtonPressed), for: .touchUpInside)
+                  view.addSubview(reloadButton)
+
+                  // অ্যাকশন বাটন (ডানদিকের জয়স্টিকের একদম উপরে পজিশন করা হয়েছে)
+                  actionButton = UIButton(type: .custom)
+                  actionButton.frame = CGRect(x: w - 180, y: h - 250, width: btnSize, height: btnSize)
+                  actionButton.backgroundColor = UIColor(white: 0.1, alpha: 0.6)
+                  actionButton.layer.cornerRadius = btnSize / 2
+                  actionButton.layer.borderWidth = 2
+                  actionButton.layer.borderColor = UIColor.magenta.cgColor
+                  actionButton.setTitle("X", for: .normal)
+                  actionButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+                  actionButton.setTitleColor(.magenta, for: .normal)
+                  actionButton.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
+                  actionButton.addTarget(self, action: #selector(actionButtonPressed), for: .touchUpInside)
+                  view.addSubview(actionButton)
+              }
+
+              @objc private func reloadButtonPressed() {
+                  performWeaponReload()
+              }
+
+              @objc private func actionButtonPressed() {
+                  hudView.showMessage("ACTION SYNCHRONIZED", color: .magenta, duration: 1.0)
+              }
+
               override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
                   guard isGameStarted && !isGamepadConnected else { return }
                   for touch in touches {
                       let pt = touch.location(in: view)
+                      
+                      // বাটনগুলোর উপর টাচ এরিয়া ওভারল্যাপ এড়ানোর চেক
+                      if reloadButton.frame.contains(pt) || actionButton.frame.contains(pt) { continue }
+                      
                       if pt.x < view.bounds.width / 2 {
                           if moveJoystick.trackingTouch == nil {
                               moveJoystick.trackingTouch = touch
@@ -906,6 +956,9 @@ jobs:
                   } else {
                       pBody.velocity = SCNVector3(0, pBody.velocity.y, 0)
                   }
+                  
+                  // 🔥 [LOCK] কন্টিনিউয়াস রোটেশন ক্লিয়ার করা—যাতে নিজে থেকে কখনো স্পিন না নেয়
+                  playerNode.eulerAngles = SCNVector3(0, playerNode.eulerAngles.y, 0)
               }
 
               private func handleAimAndFiring(time: TimeInterval) {
