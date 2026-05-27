@@ -27,24 +27,6 @@ jobs:
       - name: Create Project Directories
         run: |
           mkdir -p SV3D/Sources
-          mkdir -p SV3D/Resources/Assets.xcassets/AppIcon.appiconset
-          cat > SV3D/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json << 'EOF'
-          {
-            "images" : [
-              {
-                "size" : "1024x1024",
-                "idiom" : "ios-marketing",
-                "filename" : "icon.png",
-                "scale" : "1x"
-              }
-            ],
-            "info" : {
-              "version" : 1,
-              "author" : "xcode"
-            }
-          }
-          EOF
-          touch SV3D/Resources/Assets.xcassets/AppIcon.appiconset/icon.png
 
       # ── AppDelegate ──────────────────────────────────────────────────────────
       - name: Create AppDelegate.swift
@@ -981,6 +963,7 @@ jobs:
                   MARKETING_VERSION: "1.0.0"
                   CURRENT_PROJECT_VERSION: "1"
                   TARGETED_DEVICE_FAMILY: "1,2"
+                  ASSETCATALOG_COMPILER_APPICON_NAME: ""
           EOF
 
       - name: Create Info.plist
