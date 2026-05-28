@@ -49,7 +49,7 @@ jobs:
           }
           EOF
 
-      # ── Smooth Touch Joystick System ─────────────────────────────────────────
+      # ── Smooth Touch Joystick System (CGColor Fix Included) ──────────────────
       - name: Write Touch Input System
         run: |
           cat << 'EOF' > GameHub/Sources/Input/TouchJoystick.swift
@@ -76,7 +76,8 @@ jobs:
                   baseView.frame = CGRect(x: 0, y: 0, width: baseRadius * 2, height: baseRadius * 2)
                   baseView.backgroundColor = UIColor(white: 1.0, alpha: 0.12)
                   baseView.layer.cornerRadius = baseRadius
-                  baseView.layer.borderColor = UIColor(white: 1.0, alpha: 0.35)
+                  // ফিক্স: এখানে .cgColor যোগ করা হয়েছে টাইপ এরর দূর করার জন্য
+                  baseView.layer.borderColor = UIColor(white: 1.0, alpha: 0.35).cgColor
                   baseView.layer.borderWidth = 2
                   baseView.isUserInteractionEnabled = false
                   addSubview(baseView)
@@ -380,7 +381,7 @@ jobs:
           }
           EOF
 
-      # ── GameViewController (GTA 5 Humanoid Custom Mesh + Core Fixes) ─────────
+      # ── GameViewController (GTA 5 Character Structure & Logic) ───────────────
       - name: Create GameViewController.swift
         run: |
           cat << 'EOF' > GameHub/Sources/GameViewController.swift
@@ -410,7 +411,7 @@ jobs:
               private var isGameOver = false
               
               private var lastAttackTime: TimeInterval = 0
-              private let attackRate: TimeInterval = 0.18 // আল্ট্রা-রেসপনসিভ রেট
+              private let attackRate: TimeInterval = 0.18
               private var lastUpdateTime: TimeInterval = 0
               
               override func viewDidLoad() {
@@ -474,28 +475,24 @@ jobs:
               }
               
               private func setupHeroPlayer() {
-                  // রুট নোড জেনারেশন
                   playerNode = SCNNode()
                   playerNode.position = SCNVector3(0, 0, 0)
                   
-                  // ── GTA STYLE HUMANOID CHARACTER GENERATION ──
-                  // ১. ধড় / জ্যাকেট (Torso)
+                  // GTA Humanoid Architecture
                   let torsoGeo = SCNBox(width: 0.6, height: 0.8, length: 0.35, chamferRadius: 0.05)
-                  torsoGeo.firstMaterial?.diffuse.contents = UIColor.darkGray // GTA স্টাইল জ্যাকেট লুক
+                  torsoGeo.firstMaterial?.diffuse.contents = UIColor.darkGray
                   let torsoNode = SCNNode(geometry: torsoGeo)
                   torsoNode.position = SCNVector3(0, 0.9, 0)
                   playerNode.addChildNode(torsoNode)
                   
-                  // ২. মাথা (Head)
                   let headGeo = SCNSphere(radius: 0.2)
                   headGeo.firstMaterial?.diffuse.contents = UIColor(red: 0.95, green: 0.78, blue: 0.62, alpha: 1.0)
                   let headNode = SCNNode(geometry: headGeo)
                   headNode.position = SCNVector3(0, 1.45, 0)
                   playerNode.addChildNode(headNode)
                   
-                  // ৩. বাম এবং ডান পা (Legs / Jeans Look)
                   let legGeo = SCNCylinder(radius: 0.12, height: 0.6)
-                  legGeo.firstMaterial?.diffuse.contents = UIColor(red: 0.1, green: 0.25, blue: 0.5, alpha: 1.0) // ব্লু জিন্স
+                  legGeo.firstMaterial?.diffuse.contents = UIColor(red: 0.1, green: 0.25, blue: 0.5, alpha: 1.0)
                   
                   let leftLeg = SCNNode(geometry: legGeo)
                   leftLeg.position = SCNVector3(-0.18, 0.3, 0)
@@ -505,7 +502,6 @@ jobs:
                   rightLeg.position = SCNVector3(0.18, 0.3, 0)
                   playerNode.addChildNode(rightLeg)
                   
-                  // ৪. হাত (Arms)
                   let armGeo = SCNCylinder(radius: 0.09, height: 0.65)
                   armGeo.firstMaterial?.diffuse.contents = UIColor.darkGray
                   
@@ -517,7 +513,6 @@ jobs:
                   rightArm.position = SCNVector3(0.42, 0.9, 0)
                   playerNode.addChildNode(rightArm)
                   
-                  // ৫. হাতে থাকা রিয়েলস্টিক তরবারি (GTA Melee Blade)
                   let swordGeo = SCNBox(width: 0.06, height: 0.95, length: 0.06, chamferRadius: 0)
                   swordGeo.firstMaterial?.diffuse.contents = UIColor(white: 0.85, alpha: 1.0)
                   swordGeo.firstMaterial?.lightingModel = .physicallyBased
@@ -526,12 +521,11 @@ jobs:
                   swordNode.eulerAngles = SCNVector3(-Float.pi / 4.0, 0, 0)
                   playerNode.addChildNode(swordNode)
                   
-                  // ফিজিক্স কোঅর্ডিনেটর বডি কনফিগারেশন
                   let shapeGeo = SCNCapsule(capRadius: 0.45, height: 1.8)
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: shapeGeo, options: nil))
                   pBody.allowsResting = false
                   pBody.friction = 0.0
-                  pBody.damping = 0.95 // মোশন রিকোয়েস্ট লকিং ফিক্স
+                  pBody.damping = 0.95
                   pBody.angularVelocityFactor = SCNVector3(0, 0, 0)
                   pBody.categoryBitMask = PhysicsMask.player
                   pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground | PhysicsMask.enemy
@@ -616,7 +610,7 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
-                  // ফিক্স ১: ফুল ট্রান্সফর্ম পজিশন ম্যাপিং (ক্যারেক্টার আটকে থাকবে না বা পিছলে ফিরে যাবে না)
+                  // Joystick Direct Transform Position Shift Logic
                   if leftVector != .zero {
                       let runSpeed: Float = 8.5
                       let dx = Float(leftVector.x) * runSpeed * dt
@@ -625,13 +619,12 @@ jobs:
                       playerNode.position.x += dx
                       playerNode.position.z += dz
                       
-                      // ডান জয়স্টিক ফ্রী থাকলে বাম জয়স্টিকের মুভমেন্ট দিকে তাকাবে
                       if rightVector == .zero {
                           playerNode.eulerAngles.y = atan2(-dx, -dz)
                       }
                   }
                   
-                  // ফিক্স ২: ৩৬০° পারফেক্ট এইমিং ডিরেকশন ক্যালকুলেটর ও এনার্জি বুলেট ফায়ারিং
+                  // 360 Degree Aim Precision Engine
                   if rightVector != .zero {
                       let aimAngle = atan2(-Float(rightVector.x), Float(rightVector.y))
                       playerNode.eulerAngles.y = aimAngle
@@ -642,7 +635,6 @@ jobs:
                       }
                   }
                   
-                  // থার্ড পারসন ক্যামেরা স্মুথ ফলোয়ার
                   let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 16, playerNode.position.z + 13)
                   cameraNode.position.x += (targetCamPos.x - cameraNode.position.x) * 0.1
                   cameraNode.position.z += (targetCamPos.z - cameraNode.position.z) * 0.1
@@ -680,13 +672,11 @@ jobs:
               }
               
               private func executeSwordSlash(aimAngle: Float) {
-                  // এনার্জি সোর্ড স্ল্যাশ (Cyan Blade Projectile)
                   let slashGeo = SCNCylinder(radius: 0.7, height: 0.05)
                   slashGeo.firstMaterial?.diffuse.contents = UIColor.cyan
                   slashGeo.firstMaterial?.lightingModel = .constant
                   
                   let slashNode = SCNNode(geometry: slashGeo)
-                  // প্লেয়ারের বুক বরাবর পজিশন সেট করা হয়েছে যাতে সরাসরি শত্রুকে হিট করে
                   slashNode.position = SCNVector3(playerNode.position.x, playerNode.position.y + 0.9, playerNode.position.z)
                   slashNode.eulerAngles.x = Float.pi / 2.0
                   
@@ -698,7 +688,6 @@ jobs:
                   
                   scene.rootNode.addChildNode(slashNode)
                   
-                  // পারফেক্ট লিনিয়ার স্পিড ডিরেকশন মেথড
                   let projectileSpeed: Float = 30.0
                   sBody.velocity = SCNVector3(-sin(aimAngle) * projectileSpeed, 0, -cos(aimAngle) * projectileSpeed)
                   
