@@ -281,32 +281,30 @@ jobs:
                   let bodyRadius: CGFloat = kind == .darkKnight ? 0.4 : 0.25
                   
                   if kind == .darkKnight {
-                      // ডার্ক নাইট: কালো আর্মার পরিহিত শক্তিশালী যোদ্ধা
                       let torso = SCNCapsule(capRadius: bodyRadius, height: bodyHeight)
                       mat.diffuse.contents = UIColor(white: 0.12, alpha: 1.0)
                       torso.materials = [mat]
                       let bNode = SCNNode(geometry: torso)
-                      bNode.position = SCNVector3(0, bodyHeight/2, 0)
+                      bNode.position = SCNVector3(0, Float(bodyHeight/2), 0)
                       addChildNode(bNode)
                       
                       let helm = SCNBox(width: 0.5, height: 0.5, length: 0.5, chamferRadius: 0.1)
                       helm.firstMaterial?.diffuse.contents = UIColor.gray
                       let hNode = SCNNode(geometry: helm)
-                      hNode.position = SCNVector3(0, bodyHeight, 0)
+                      hNode.position = SCNVector3(0, Float(bodyHeight), 0)
                       addChildNode(hNode)
                   } else {
-                      // গবলিন: ছোট, সবুজ ও দ্রুতগতির ক্রিয়েচার
                       let torso = SCNCapsule(capRadius: bodyRadius, height: bodyHeight)
                       mat.diffuse.contents = UIColor(red: 0.2, green: 0.6, blue: 0.2, alpha: 1.0)
                       torso.materials = [mat]
                       let bNode = SCNNode(geometry: torso)
-                      bNode.position = SCNVector3(0, bodyHeight/2, 0)
+                      bNode.position = SCNVector3(0, Float(bodyHeight/2), 0)
                       addChildNode(bNode)
                       
                       let head = SCNSphere(radius: 0.22)
                       head.firstMaterial?.diffuse.contents = UIColor(red: 0.15, green: 0.5, blue: 0.15, alpha: 1.0)
                       let hNode = SCNNode(geometry: head)
-                      hNode.position = SCNVector3(0, bodyHeight, 0)
+                      hNode.position = SCNVector3(0, Float(bodyHeight), 0)
                       addChildNode(hNode)
                   }
               }
@@ -372,7 +370,7 @@ jobs:
                       physicsBody = nil
                       runAction(SCNAction.sequence([
                           SCNAction.group([
-                              SCNAction.rotateBy(x: .pi/2, y: 0, z: 0, duration: 0.25),
+                              SCNAction.rotateBy(x: CGFloat(Float.pi/2), y: 0, z: 0, duration: 0.25),
                               SCNAction.fadeOut(duration: 0.4)
                           ]),
                           SCNAction.removeFromParentNode()
@@ -382,7 +380,7 @@ jobs:
           }
           EOF
 
-      # ── GameViewController (RPG Core Logic & Visuals) ────────────────────────
+      # ── GameViewController (Explicit Float.pi Fixing) ────────────────────────
       - name: Create GameViewController.swift
         run: |
           cat << 'EOF' > GameHub/Sources/GameViewController.swift
@@ -464,7 +462,6 @@ jobs:
                   sunNode.look(at: SCNVector3(0, 0, 0))
                   scene.rootNode.addChildNode(sunNode)
                   
-                  // সবুজ ঘাসের মাঠ বা ফ্যান্টাসি গ্রাউন্ড কালার
                   let floorGeo = SCNFloor()
                   floorGeo.reflectivity = 0.01
                   let floorMat = SCNMaterial()
@@ -477,7 +474,6 @@ jobs:
               }
               
               private func setupHeroPlayer() {
-                  // ব্লু হিরো ক্যারেক্টার
                   let bodyGeo = SCNCapsule(capRadius: 0.38, height: 1.75)
                   let bodyMat = SCNMaterial()
                   bodyMat.diffuse.contents = UIColor(red: 0.0, green: 0.4, blue: 0.9, alpha: 1.0)
@@ -491,12 +487,12 @@ jobs:
                   head.geometry?.firstMaterial?.diffuse.contents = UIColor(red: 0.95, green: 0.8, blue: 0.65, alpha: 1)
                   playerNode.addChildNode(head)
                   
-                  // তরবারির রিপ্রেজেন্টেশন (ছোট সিলিন্ডার/বক্স)
                   let swordGeo = SCNBox(width: 0.08, height: 0.9, length: 0.08, chamferRadius: 0)
                   swordGeo.firstMaterial?.diffuse.contents = UIColor.lightGray
                   let swordNode = SCNNode(geometry: swordGeo)
                   swordNode.position = SCNVector3(0.5, 0.4, -0.3)
-                  swordNode.eulerAngles = SCNVector3(-.pi/4, 0, 0)
+                  // টাইপ অস্পষ্টতা দূর করতে Explicitly Float.pi ব্যবহার করা হলো
+                  swordNode.eulerAngles = SCNVector3(-Float.pi / 4.0, 0, 0)
                   playerNode.addChildNode(swordNode)
                   
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: bodyGeo, options: nil))
@@ -562,7 +558,7 @@ jobs:
                       let enemy = EnemyNode(kind: kind)
                       
                       let spawnRadius = Float.random(in: 8...45)
-                      let angle = Float.random(in: 0...(.pi * 2))
+                      let angle = Float.random(in: 0...(Float.pi * 2.0))
                       enemy.position = SCNVector3(sin(angle) * spawnRadius, 0.0, cos(angle) * spawnRadius)
                       
                       scene.rootNode.addChildNode(enemy)
@@ -585,7 +581,6 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
-                  // হিরো মুভমেন্ট লজিক (মাখনের মতো কাজ করবে)
                   if leftVector != .zero {
                       let runSpeed: Float = 8.0
                       let moveX = Float(leftVector.x) * runSpeed
@@ -601,7 +596,6 @@ jobs:
                       playerNode.physicsBody?.velocity.z = 0
                   }
                   
-                  // ডান জয়স্টিক ড্রাগ করলে সোর্ড স্ল্যাশ / অ্যাটাক হবে
                   if rightVector != .zero {
                       playerNode.eulerAngles.y = atan2(-Float(rightVector.x), Float(rightVector.y))
                       if time - lastAttackTime >= attackRate {
@@ -610,7 +604,6 @@ jobs:
                       }
                   }
                   
-                  // থার্ড পারসন ক্যামেরা ফলো
                   let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 15, playerNode.position.z + 12)
                   cameraNode.position.x += (targetCamPos.x - cameraNode.position.x) * 0.1
                   cameraNode.position.z += (targetCamPos.z - cameraNode.position.z) * 0.1
@@ -647,14 +640,13 @@ jobs:
               }
               
               private func executeSwordSlash() {
-                  // এনার্জি সোর্ড স্ল্যাশ প্রজেক্টাইল (হলুদ রঙের অর্ধবৃত্তাকার ব্লেড এফেক্ট)
                   let slashGeo = SCNCylinder(radius: 0.6, height: 0.05)
                   slashGeo.firstMaterial?.diffuse.contents = UIColor.yellow
                   slashGeo.firstMaterial?.lightingModel = .constant
                   
                   let slashNode = SCNNode(geometry: slashGeo)
                   slashNode.position = SCNVector3(playerNode.position.x, playerNode.position.y, playerNode.position.z)
-                  slashNode.eulerAngles.x = .pi / 2
+                  slashNode.eulerAngles.x = Float.pi / 2.0
                   
                   let sBody = SCNPhysicsBody(type: .dynamic, shape: nil)
                   sBody.isAffectedByGravity = false
@@ -713,7 +705,6 @@ jobs:
                   if let e = enemy, e.isAlive {
                       e.takeDamage(50.0)
                       if !e.isAlive {
-                          // RPG রিওয়ার্ড সিস্টেম
                           let goldReward = e.kind == .darkKnight ? Int.random(in: 50...100) : Int.random(in: 15...30)
                           let xpReward = e.kind == .darkKnight ? 40 : 15
                           
