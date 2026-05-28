@@ -1,4 +1,4 @@
-name: 🎮 Shadow Village 3D – GTA Style Open World Zombie
+name: ⚔️ Shadow Village 3D – Open World RPG Adventure
 
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
           }
           EOF
 
-      # ── Custom Touch Joystick System (No Apple GC Bug) ───────────────────────
+      # ── Custom Touch Joystick System ─────────────────────────────────────────
       - name: Write Touch Input System
         run: |
           cat << 'EOF' > GameHub/Sources/Input/TouchJoystick.swift
@@ -123,7 +123,6 @@ jobs:
                   
                   stickView.center = CGPoint(x: finalX, y: finalY)
                   
-                  // নরমালাইজড ভ্যালু (-1 থেকে 1) মেইন প্লেয়ারকে মুভ করার জন্য
                   let normX = cos(angle) * (clampedDist / baseRadius)
                   let normY = sin(angle) * (clampedDist / baseRadius)
                   onChange(CGPoint(x: normX, y: -normY)) 
@@ -131,7 +130,7 @@ jobs:
           }
           EOF
 
-      # ── Types ────────────────────────────────────────────────────────────────
+      # ── RPG Types ────────────────────────────────────────────────────────────
       - name: Create Types.swift
         run: |
           cat << 'EOF' > GameHub/Sources/Types.swift
@@ -140,16 +139,16 @@ jobs:
               static let none:   Int = 0
               static let player: Int = 1 << 0
               static let enemy:  Int = 1 << 1
-              static let bullet: Int = 1 << 2
+              static let slash:  Int = 1 << 2
               static let wall:   Int = 1 << 3
               static let ground: Int = 1 << 4
           }
-          enum CivilianGender {
-              case man, women
+          enum EnemyKind {
+              case goblin, darkKnight
           }
           EOF
 
-      # ── HUDOverlay ───────────────────────────────────────────────────────────
+      # ── RPG HUDOverlay ───────────────────────────────────────────────────────
       - name: Create HUDOverlay.swift
         run: |
           cat << 'EOF' > GameHub/Sources/HUDOverlay.swift
@@ -157,8 +156,8 @@ jobs:
           class HUDOverlay: UIView {
               private let hpBg      = UIView()
               private let hpBar     = UIView()
-              private let ammoLbl   = UILabel()
-              private let scoreLbl  = UILabel()
+              private let statLbl   = UILabel()
+              private let goldLbl   = UILabel()
               private let msgLbl    = UILabel()
               let renewBtn  = UIButton(type: .system)
               let barW: CGFloat = 220
@@ -188,21 +187,21 @@ jobs:
                   hpBar.layer.cornerRadius = 5
                   addSubview(hpBar)
                   
-                  scoreLbl.frame            = CGRect(x: bounds.width - 240, y: 20, width: 220, height: 26)
-                  scoreLbl.autoresizingMask = [.flexibleLeftMargin]
-                  scoreLbl.text             = "WANTED // $000000"
-                  scoreLbl.textColor        = .yellow
-                  scoreLbl.font = customFont(16, bold: true)
-                  scoreLbl.textAlignment    = .right
-                  addSubview(scoreLbl)
+                  goldLbl.frame            = CGRect(x: bounds.width - 240, y: 20, width: 220, height: 26)
+                  goldLbl.autoresizingMask = [.flexibleLeftMargin]
+                  goldLbl.text             = "GOLD: 0  |  XP: 0"
+                  goldLbl.textColor        = .orange
+                  goldLbl.font = customFont(16, bold: true)
+                  goldLbl.textAlignment    = .right
+                  addSubview(goldLbl)
                   
-                  ammoLbl.frame            = CGRect(x: bounds.width - 200, y: bounds.height - 65, width: 180, height: 45)
-                  ammoLbl.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  ammoLbl.text             = "AMMO: ∞"
-                  ammoLbl.textColor        = UIColor(red: 1.0, green: 0.3, blue: 0.0, alpha: 1.0)
-                  ammoLbl.font = customFont(26, bold: true)
-                  ammoLbl.textAlignment    = .right
-                  addSubview(ammoLbl)
+                  statLbl.frame            = CGRect(x: bounds.width - 200, y: bounds.height - 65, width: 180, height: 45)
+                  statLbl.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
+                  statLbl.text             = "WEAPON: SWORD"
+                  statLbl.textColor        = UIColor(red: 0.0, green: 0.75, blue: 1.0, alpha: 1.0)
+                  statLbl.font = customFont(20, bold: true)
+                  statLbl.textAlignment    = .right
+                  addSubview(statLbl)
                   
                   msgLbl.frame            = CGRect(x: 0, y: bounds.height * 0.35, width: bounds.width, height: 50)
                   msgLbl.autoresizingMask = [.flexibleWidth, .flexibleTopMargin, .flexibleBottomMargin]
@@ -214,10 +213,10 @@ jobs:
                   
                   renewBtn.frame = CGRect(x: bounds.width/2 - 120, y: bounds.height * 0.55, width: 240, height: 50)
                   renewBtn.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin, .flexibleTopMargin, .flexibleBottomMargin]
-                  renewBtn.setTitle("RESPAWN (RENEW CHARACTER)", for: .normal)
+                  renewBtn.setTitle("REVIVE HERO (RESPAWN)", for: .normal)
                   renewBtn.titleLabel?.font = customFont(14, bold: true)
                   renewBtn.setTitleColor(.black, for: .normal)
-                  renewBtn.backgroundColor = .white
+                  renewBtn.backgroundColor = .yellow
                   renewBtn.layer.cornerRadius = 4
                   renewBtn.isHidden = true
                   renewBtn.addTarget(self, action: #selector(renewTapped), for: .touchUpInside)
@@ -228,11 +227,11 @@ jobs:
                   onRenewPressed?()
               }
               
-              func update(health: Float, maxHealth: Float, score: Int) {
+              func update(health: Float, maxHealth: Float, gold: Int, xp: Int) {
                   let ratio = CGFloat(max(0, health / maxHealth))
                   UIView.animate(withDuration: 0.15) { self.hpBar.frame.size.width = self.barW * ratio }
                   hpBar.backgroundColor = ratio > 0.5 ? .green : (ratio > 0.25 ? .orange : .red)
-                  scoreLbl.text = String(format: "WANTED // $%06d", score)
+                  goldLbl.text = "GOLD: \(gold)  |  XP: \(xp)"
               }
               
               func showMessage(_ text: String, color: UIColor = .white, duration: TimeInterval = 2.0) {
@@ -248,7 +247,7 @@ jobs:
           }
           EOF
 
-      # ── EnemyNode (GTA Zombie Citizen) ───────────────────────────────────────
+      # ── RPG EnemyNode (Goblin & Dark Knight) ─────────────────────────────────
       - name: Create EnemyNode.swift
         run: |
           cat << 'EOF' > GameHub/Sources/EnemyNode.swift
@@ -256,60 +255,75 @@ jobs:
           import UIKit
 
           class EnemyNode: SCNNode {
-              let gender: CivilianGender
-              var hp: Float = 100.0
+              let kind: EnemyKind
+              var hp: Float
               var isAlive = true
               var lastAttackTime: TimeInterval = 0
               
               private var roamTarget: SCNVector3 = SCNVector3(0, 0, 0)
               private var isChasing = false
-              private var speed: Float = 1.8
+              private var speed: Float = 1.5
               
-              init(gender: CivilianGender) {
-                  self.gender = gender
+              init(kind: EnemyKind) {
+                  self.kind = kind
+                  self.hp = kind == .darkKnight ? 150.0 : 60.0
                   super.init()
-                  buildHumanMesh()
+                  buildRPGGeometry()
                   buildPhysics()
                   generateNewRoamTarget()
               }
               
               required init?(coder: NSCoder) { fatalError() }
               
-              private func buildHumanMesh() {
-                  let bodyRadius: CGFloat = gender == .man ? 0.35 : 0.28
-                  let bodyHeight: CGFloat = gender == .man ? 1.6 : 1.45
-                  
-                  let torso = SCNCapsule(capRadius: bodyRadius, height: bodyHeight)
+              private func buildRPGGeometry() {
                   let mat = SCNMaterial()
-                  mat.diffuse.contents = gender == .man ? UIColor.darkGray : UIColor(red: 0.7, green: 0.3, blue: 0.4, alpha: 1)
-                  mat.lightingModel = .lambert
-                  torso.materials = [mat]
+                  let bodyHeight: CGFloat = kind == .darkKnight ? 1.8 : 1.1
+                  let bodyRadius: CGFloat = kind == .darkKnight ? 0.4 : 0.25
                   
-                  let bodyNode = SCNNode(geometry: torso)
-                  bodyNode.position = SCNVector3(0, bodyHeight / 2, 0)
-                  addChildNode(bodyNode)
-                  
-                  let headGeo = SCNSphere(radius: 0.22)
-                  let headMat = SCNMaterial()
-                  headMat.diffuse.contents = UIColor(red: 0.4, green: 0.5, blue: 0.4, alpha: 1)
-                  headGeo.materials = [headMat]
-                  let headNode = SCNNode(geometry: headGeo)
-                  headNode.position = SCNVector3(0, bodyHeight, 0)
-                  addChildNode(headNode)
+                  if kind == .darkKnight {
+                      // ডার্ক নাইট: কালো আর্মার পরিহিত শক্তিশালী যোদ্ধা
+                      let torso = SCNCapsule(capRadius: bodyRadius, height: bodyHeight)
+                      mat.diffuse.contents = UIColor(white: 0.12, alpha: 1.0)
+                      torso.materials = [mat]
+                      let bNode = SCNNode(geometry: torso)
+                      bNode.position = SCNVector3(0, bodyHeight/2, 0)
+                      addChildNode(bNode)
+                      
+                      let helm = SCNBox(width: 0.5, height: 0.5, length: 0.5, chamferRadius: 0.1)
+                      helm.firstMaterial?.diffuse.contents = UIColor.gray
+                      let hNode = SCNNode(geometry: helm)
+                      hNode.position = SCNVector3(0, bodyHeight, 0)
+                      addChildNode(hNode)
+                  } else {
+                      // গবলিন: ছোট, সবুজ ও দ্রুতগতির ক্রিয়েচার
+                      let torso = SCNCapsule(capRadius: bodyRadius, height: bodyHeight)
+                      mat.diffuse.contents = UIColor(red: 0.2, green: 0.6, blue: 0.2, alpha: 1.0)
+                      torso.materials = [mat]
+                      let bNode = SCNNode(geometry: torso)
+                      bNode.position = SCNVector3(0, bodyHeight/2, 0)
+                      addChildNode(bNode)
+                      
+                      let head = SCNSphere(radius: 0.22)
+                      head.firstMaterial?.diffuse.contents = UIColor(red: 0.15, green: 0.5, blue: 0.15, alpha: 1.0)
+                      let hNode = SCNNode(geometry: head)
+                      hNode.position = SCNVector3(0, bodyHeight, 0)
+                      addChildNode(hNode)
+                  }
               }
               
               private func buildPhysics() {
-                  let shape = SCNPhysicsShape(geometry: SCNCapsule(capRadius: 0.35, height: 1.6), options: nil)
+                  let height: CGFloat = kind == .darkKnight ? 1.8 : 1.1
+                  let shape = SCNPhysicsShape(geometry: SCNCapsule(capRadius: 0.4, height: height), options: nil)
                   let body = SCNPhysicsBody(type: .kinematic, shape: shape)
                   body.categoryBitMask = PhysicsMask.enemy
-                  body.contactTestBitMask = PhysicsMask.bullet | PhysicsMask.player
+                  body.contactTestBitMask = PhysicsMask.slash | PhysicsMask.player
                   physicsBody = body
               }
               
               private func generateNewRoamTarget() {
-                  let range: Float = 35.0
+                  let range: Float = 40.0
                   roamTarget = SCNVector3(Float.random(in: -range...range), 0.5, Float.random(in: -range...range))
-                  speed = Float.random(in: 0.9...1.6)
+                  speed = kind == .goblin ? Float.random(in: 2.2...3.2) : Float.random(in: 1.2...1.8)
               }
               
               func updateAI(playerPosition: SCNVector3, dt: Float) {
@@ -319,14 +333,14 @@ jobs:
                   let dz = playerPosition.z - position.z
                   let distToPlayer = sqrt(dx * dx + dz * dz)
                   
-                  if distToPlayer < 9.0 {
+                  let detectionRange: Float = kind == .darkKnight ? 12.0 : 8.0
+                  
+                  if distToPlayer < detectionRange {
                       isChasing = true
-                      speed = gender == .women ? 4.0 : 2.8
-                      
                       let angle = atan2(dx, dz)
                       eulerAngles.y = angle
                       
-                      if distToPlayer > 1.1 {
+                      if distToPlayer > 1.2 {
                           position.x += (dx / distToPlayer) * speed * dt
                           position.z += (dz / distToPlayer) * speed * dt
                       }
@@ -358,8 +372,8 @@ jobs:
                       physicsBody = nil
                       runAction(SCNAction.sequence([
                           SCNAction.group([
-                              SCNAction.rotateBy(x: .pi/2, y: 0, z: 0, duration: 0.3),
-                              SCNAction.fadeOut(duration: 0.5)
+                              SCNAction.rotateBy(x: .pi/2, y: 0, z: 0, duration: 0.25),
+                              SCNAction.fadeOut(duration: 0.4)
                           ]),
                           SCNAction.removeFromParentNode()
                       ]))
@@ -368,7 +382,7 @@ jobs:
           }
           EOF
 
-      # ── GameViewController (Fully Touch Driven Custom UI Joystick) ───────────
+      # ── GameViewController (RPG Core Logic & Visuals) ────────────────────────
       - name: Create GameViewController.swift
         run: |
           cat << 'EOF' > GameHub/Sources/GameViewController.swift
@@ -383,7 +397,7 @@ jobs:
               
               private var playerNode: SCNNode!
               private var cameraNode: SCNNode!
-              private var citizens: [EnemyNode] = []
+              private var enemies: [EnemyNode] = []
               
               private var leftJoystick: TouchJoystick!
               private var rightJoystick: TouchJoystick!
@@ -391,13 +405,14 @@ jobs:
               private var leftVector: CGPoint = .zero
               private var rightVector: CGPoint = .zero
               
-              private var wantedLevel = 0
+              private var playerGold = 0
+              private var playerXP = 0
               private var playerHP: Float = 100.0
               private let maxPlayerHP: Float = 100.0
               private var isGameOver = false
               
-              private var lastFireTime: TimeInterval = 0
-              private let fireRate: TimeInterval = 0.12
+              private var lastAttackTime: TimeInterval = 0
+              private let attackRate: TimeInterval = 0.25
               private var lastUpdateTime: TimeInterval = 0
               
               override func viewDidLoad() {
@@ -405,12 +420,12 @@ jobs:
                   view.backgroundColor = .black
                   
                   setupEngine()
-                  setupOpenWorldMaps()
-                  setupHumanPlayer()
+                  setupRPGWorld()
+                  setupHeroPlayer()
                   setupHUD()
                   setupTouchJoysticks()
                   
-                  spawnWorldPopulation(count: 35)
+                  spawnRPGEnemies(count: 30)
               }
               
               override var prefersStatusBarHidden: Bool { return true }
@@ -430,29 +445,30 @@ jobs:
                   sceneView.scene = scene
               }
               
-              private func setupOpenWorldMaps() {
+              private func setupRPGWorld() {
                   let ambLight = SCNLight()
                   ambLight.type = .ambient
-                  ambLight.color = UIColor(white: 0.35, alpha: 1.0)
+                  ambLight.color = UIColor(white: 0.4, alpha: 1.0)
                   let ambNode = SCNNode()
                   ambNode.light = ambLight
                   scene.rootNode.addChildNode(ambNode)
                   
                   let sunLight = SCNLight()
                   sunLight.type = .directional
-                  sunLight.color = UIColor(red: 0.95, green: 0.85, blue: 0.75, alpha: 1.0)
-                  sunLight.intensity = 1200
+                  sunLight.color = UIColor(red: 0.9, green: 0.85, blue: 0.8, alpha: 1.0)
+                  sunLight.intensity = 1500
                   sunLight.castsShadow = true
                   let sunNode = SCNNode()
                   sunNode.light = sunLight
-                  sunNode.position = SCNVector3(20, 35, 10)
+                  sunNode.position = SCNVector3(25, 40, 15)
                   sunNode.look(at: SCNVector3(0, 0, 0))
                   scene.rootNode.addChildNode(sunNode)
                   
+                  // সবুজ ঘাসের মাঠ বা ফ্যান্টাসি গ্রাউন্ড কালার
                   let floorGeo = SCNFloor()
-                  floorGeo.reflectivity = 0.02
+                  floorGeo.reflectivity = 0.01
                   let floorMat = SCNMaterial()
-                  floorMat.diffuse.contents = UIColor(white: 0.2, alpha: 1.0)
+                  floorMat.diffuse.contents = UIColor(red: 0.15, green: 0.35, blue: 0.15, alpha: 1.0)
                   floorGeo.materials = [floorMat]
                   let floorNode = SCNNode(geometry: floorGeo)
                   floorNode.physicsBody = SCNPhysicsBody(type: .static, shape: nil)
@@ -460,11 +476,11 @@ jobs:
                   scene.rootNode.addChildNode(floorNode)
               }
               
-              private func setupHumanPlayer() {
-                  // মেইন ব্লু ক্যারেক্টার মডেল
+              private func setupHeroPlayer() {
+                  // ব্লু হিরো ক্যারেক্টার
                   let bodyGeo = SCNCapsule(capRadius: 0.38, height: 1.75)
                   let bodyMat = SCNMaterial()
-                  bodyMat.diffuse.contents = UIColor.blue
+                  bodyMat.diffuse.contents = UIColor(red: 0.0, green: 0.4, blue: 0.9, alpha: 1.0)
                   bodyGeo.materials = [bodyMat]
                   
                   playerNode = SCNNode(geometry: bodyGeo)
@@ -474,6 +490,14 @@ jobs:
                   head.position = SCNVector3(0, 1.75, 0)
                   head.geometry?.firstMaterial?.diffuse.contents = UIColor(red: 0.95, green: 0.8, blue: 0.65, alpha: 1)
                   playerNode.addChildNode(head)
+                  
+                  // তরবারির রিপ্রেজেন্টেশন (ছোট সিলিন্ডার/বক্স)
+                  let swordGeo = SCNBox(width: 0.08, height: 0.9, length: 0.08, chamferRadius: 0)
+                  swordGeo.firstMaterial?.diffuse.contents = UIColor.lightGray
+                  let swordNode = SCNNode(geometry: swordGeo)
+                  swordNode.position = SCNVector3(0.5, 0.4, -0.3)
+                  swordNode.eulerAngles = SCNVector3(-.pi/4, 0, 0)
+                  playerNode.addChildNode(swordNode)
                   
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: bodyGeo, options: nil))
                   pBody.allowsResting = false
@@ -487,13 +511,12 @@ jobs:
                   
                   cameraNode = SCNNode()
                   cameraNode.camera = SCNCamera()
-                  cameraNode.position = SCNVector3(0, 16, 11)
+                  cameraNode.position = SCNVector3(0, 15, 12)
                   cameraNode.look(at: playerNode.position)
                   scene.rootNode.addChildNode(cameraNode)
               }
               
               private func setupTouchJoysticks() {
-                  // স্ক্রিনের বামে ও ডানে ১০০% ডিরেক্ট রেসপনসিভ টাচ জয়স্টিক প্লেসমেন্ট
                   let padW: CGFloat = 140
                   let padH: CGFloat = 140
                   let bottomSpace: CGFloat = 30
@@ -533,17 +556,17 @@ jobs:
                   }
               }
               
-              private func spawnWorldPopulation(count: Int) {
+              private func spawnRPGEnemies(count: Int) {
                   for _ in 0..<count {
-                      let gender: CivilianGender = Bool.random() ? .man : .women
-                      let citizen = EnemyNode(gender: gender)
+                      let kind: EnemyKind = Bool.random() ? .goblin : .darkKnight
+                      let enemy = EnemyNode(kind: kind)
                       
-                      let spawnRadius = Float.random(in: 5...45)
+                      let spawnRadius = Float.random(in: 8...45)
                       let angle = Float.random(in: 0...(.pi * 2))
-                      citizen.position = SCNVector3(sin(angle) * spawnRadius, 0.0, cos(angle) * spawnRadius)
+                      enemy.position = SCNVector3(sin(angle) * spawnRadius, 0.0, cos(angle) * spawnRadius)
                       
-                      scene.rootNode.addChildNode(citizen)
-                      citizens.append(citizen)
+                      scene.rootNode.addChildNode(enemy)
+                      enemies.append(enemy)
                   }
               }
               
@@ -552,7 +575,7 @@ jobs:
                   hud.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                   hud.onRenewPressed = { [weak self] in self?.renewGame() }
                   view.addSubview(hud)
-                  hud.update(health: playerHP, maxHealth: maxPlayerHP, score: wantedLevel)
+                  hud.update(health: playerHP, maxHealth: maxPlayerHP, gold: playerGold, xp: playerXP)
               }
               
               func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
@@ -562,9 +585,9 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
-                  // ১. কাস্টম টাচ জয়স্টিক দিয়ে ব্লু ক্যারেক্টার ১০০% নিখুঁতভাবে মুভ করবে
+                  // হিরো মুভমেন্ট লজিক (মাখনের মতো কাজ করবে)
                   if leftVector != .zero {
-                      let runSpeed: Float = 8.5
+                      let runSpeed: Float = 8.0
                       let moveX = Float(leftVector.x) * runSpeed
                       let moveZ = -Float(leftVector.y) * runSpeed
                       
@@ -578,35 +601,38 @@ jobs:
                       playerNode.physicsBody?.velocity.z = 0
                   }
                   
-                  // ২. ডান কাস্টম টাচ জয়স্টিক ড্রাগ করলে অটোমেটিক ফাইট/শুট করবে
+                  // ডান জয়স্টিক ড্রাগ করলে সোর্ড স্ল্যাশ / অ্যাটাক হবে
                   if rightVector != .zero {
                       playerNode.eulerAngles.y = atan2(-Float(rightVector.x), Float(rightVector.y))
-                      if time - lastFireTime >= fireRate {
-                          lastFireTime = time
-                          executeShoot()
+                      if time - lastAttackTime >= attackRate {
+                          lastAttackTime = time
+                          executeSwordSlash()
                       }
                   }
                   
-                  // মসৃণ ক্যামেরা ফলো
-                  let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 16, playerNode.position.z + 11)
+                  // থার্ড পারসন ক্যামেরা ফলো
+                  let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 15, playerNode.position.z + 12)
                   cameraNode.position.x += (targetCamPos.x - cameraNode.position.x) * 0.1
                   cameraNode.position.z += (targetCamPos.z - cameraNode.position.z) * 0.1
                   
-                  citizens = citizens.filter { $0.parent != nil }
+                  enemies = enemies.filter { $0.parent != nil }
                   let pPos = playerNode.position
-                  for citizen in citizens {
-                      citizen.updateAI(playerPosition: pPos, dt: dt)
+                  for enemy in enemies {
+                      enemy.updateAI(playerPosition: pPos, dt: dt)
                       
-                      let dx = citizen.position.x - pPos.x
-                      let dz = citizen.position.z - pPos.z
-                      if sqrt(dx*dx + dz*dz) < 1.1 {
-                          if time - citizen.lastAttackTime >= 1.5 {
-                              citizen.lastAttackTime = time
-                              playerHP = max(0, playerHP - 15)
+                      let dx = enemy.position.x - pPos.x
+                      let dz = enemy.position.z - pPos.z
+                      if sqrt(dx*dx + dz*dz) < 1.2 {
+                          if time - enemy.lastAttackTime >= 1.2 {
+                              enemy.lastAttackTime = time
+                              let dmg = enemy.kind == .darkKnight ? 20.0 : 8.0
+                              playerHP = max(0, playerHP - Float(dmg))
+                              
                               DispatchQueue.main.async { [weak self] in
                                   guard let self = self else { return }
-                                  self.hud.update(health: self.playerHP, maxHealth: self.maxPlayerHP, score: self.wantedLevel)
+                                  self.hud.update(health: self.playerHP, maxHealth: self.maxPlayerHP, gold: self.playerGold, xp: self.playerXP)
                               }
+                              
                               if playerHP <= 0 {
                                   isGameOver = true
                                   DispatchQueue.main.async { [weak self] in self?.triggerGameOver() }
@@ -615,77 +641,88 @@ jobs:
                       }
                   }
                   
-                  if citizens.count < 10 {
-                      DispatchQueue.main.async { [weak self] in self?.spawnWorldPopulation(count: 20) }
+                  if enemies.count < 8 {
+                      DispatchQueue.main.async { [weak self] in self?.spawnRPGEnemies(count: 15) }
                   }
               }
               
-              private func executeShoot() {
-                  let bullet = SCNNode(geometry: SCNSphere(radius: 0.12))
-                  bullet.geometry?.firstMaterial?.diffuse.contents = UIColor.yellow
-                  bullet.geometry?.firstMaterial?.lightingModel = .constant
-                  bullet.position = SCNVector3(playerNode.position.x, playerNode.position.y + 0.4, playerNode.position.z)
+              private func executeSwordSlash() {
+                  // এনার্জি সোর্ড স্ল্যাশ প্রজেক্টাইল (হলুদ রঙের অর্ধবৃত্তাকার ব্লেড এফেক্ট)
+                  let slashGeo = SCNCylinder(radius: 0.6, height: 0.05)
+                  slashGeo.firstMaterial?.diffuse.contents = UIColor.yellow
+                  slashGeo.firstMaterial?.lightingModel = .constant
                   
-                  let bBody = SCNPhysicsBody(type: .dynamic, shape: nil)
-                  bBody.isAffectedByGravity = false
-                  bBody.categoryBitMask = PhysicsMask.bullet
-                  bBody.contactTestBitMask = PhysicsMask.enemy
-                  bullet.physicsBody = bBody
+                  let slashNode = SCNNode(geometry: slashGeo)
+                  slashNode.position = SCNVector3(playerNode.position.x, playerNode.position.y, playerNode.position.z)
+                  slashNode.eulerAngles.x = .pi / 2
                   
-                  scene.rootNode.addChildNode(bullet)
+                  let sBody = SCNPhysicsBody(type: .dynamic, shape: nil)
+                  sBody.isAffectedByGravity = false
+                  sBody.categoryBitMask = PhysicsMask.slash
+                  sBody.contactTestBitMask = PhysicsMask.enemy
+                  slashNode.physicsBody = sBody
+                  
+                  scene.rootNode.addChildNode(slashNode)
                   
                   let angle = playerNode.eulerAngles.y
-                  let speed: Float = 32.0
-                  bBody.velocity = SCNVector3(-sin(angle) * speed, 0, -cos(angle) * speed)
+                  let speed: Float = 26.0
+                  sBody.velocity = SCNVector3(-sin(angle) * speed, 0, -cos(angle) * speed)
                   
-                  bullet.runAction(SCNAction.sequence([SCNAction.wait(duration: 1.2), SCNAction.removeFromParentNode()]))
+                  slashNode.runAction(SCNAction.sequence([SCNAction.wait(duration: 0.6), SCNAction.removeFromParentNode()]))
               }
               
               private func triggerGameOver() {
-                  hud.showMessage("WASTED // YOU DIED", color: .red, duration: 0)
+                  hud.showMessage("HERO DEFEATED // GAME OVER", color: .red, duration: 0)
                   hud.renewBtn.isHidden = false
               }
               
               private func renewGame() {
                   isGameOver = false
                   playerHP = maxPlayerHP
-                  wantedLevel = 0
+                  playerGold = 0
+                  playerXP = 0
                   leftVector = .zero
                   rightVector = .zero
                   
-                  for citizen in citizens { citizen.removeFromParentNode() }
-                  citizens.removeAll()
+                  for enemy in enemies { enemy.removeFromParentNode() }
+                  enemies.removeAll()
                   
                   playerNode.position = SCNVector3(0, 0.875, 0)
                   playerNode.physicsBody?.velocity = SCNVector3(0, 0, 0)
                   
                   hud.renewBtn.isHidden = true
                   hud.clearMessage()
-                  hud.update(health: playerHP, maxHealth: maxPlayerHP, score: wantedLevel)
+                  hud.update(health: playerHP, maxHealth: maxPlayerHP, gold: playerGold, xp: playerXP)
                   
-                  spawnWorldPopulation(count: 35)
+                  spawnRPGEnemies(count: 30)
               }
               
               func physicsWorld(_ world: SCNPhysicsWorld, didBegin contact: SCNPhysicsContact) {
                   let maskA = contact.nodeA.physicsBody?.categoryBitMask ?? 0
                   let maskB = contact.nodeB.physicsBody?.categoryBitMask ?? 0
                   
-                  if (maskA == PhysicsMask.bullet && maskB == PhysicsMask.enemy) {
-                      handleBulletHit(bullet: contact.nodeA, enemy: contact.nodeB as? EnemyNode)
-                  } else if (maskA == PhysicsMask.enemy && maskB == PhysicsMask.bullet) {
-                      handleBulletHit(bullet: contact.nodeB, enemy: contact.nodeA as? EnemyNode)
+                  if (maskA == PhysicsMask.slash && maskB == PhysicsMask.enemy) {
+                      handleSlashHit(slash: contact.nodeA, enemy: contact.nodeB as? EnemyNode)
+                  } else if (maskA == PhysicsMask.enemy && maskB == PhysicsMask.slash) {
+                      handleSlashHit(slash: contact.nodeB, enemy: contact.nodeA as? EnemyNode)
                   }
               }
               
-              private func handleBulletHit(bullet: SCNNode, enemy: EnemyNode?) {
-                  bullet.removeFromParentNode()
+              private func handleSlashHit(slash: SCNNode, enemy: EnemyNode?) {
+                  slash.removeFromParentNode()
                   if let e = enemy, e.isAlive {
                       e.takeDamage(50.0)
                       if !e.isAlive {
-                          wantedLevel += Int.random(in: 100...250)
+                          // RPG রিওয়ার্ড সিস্টেম
+                          let goldReward = e.kind == .darkKnight ? Int.random(in: 50...100) : Int.random(in: 15...30)
+                          let xpReward = e.kind == .darkKnight ? 40 : 15
+                          
+                          playerGold += goldReward
+                          playerXP += xpReward
+                          
                           DispatchQueue.main.async { [weak self] in
                               guard let self = self else { return }
-                              self.hud.update(health: self.playerHP, maxHealth: self.maxPlayerHP, score: self.wantedLevel)
+                              self.hud.update(health: self.playerHP, maxHealth: self.maxPlayerHP, gold: self.playerGold, xp: self.playerXP)
                           }
                       }
                   }
@@ -709,7 +746,7 @@ jobs:
               settings:
                 base:
                   INFOPLIST_FILE: GameHub/Info.plist
-                  PRODUCT_BUNDLE_IDENTIFIER: com.shadowvillage.game.gtaopenworld
+                  PRODUCT_BUNDLE_IDENTIFIER: com.shadowvillage.game.rpgadventure
                   PRODUCT_NAME: GameHub
                   MARKETING_VERSION: "1.0.0"
                   CURRENT_PROJECT_VERSION: "1"
@@ -727,13 +764,13 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>CFBundleIdentifier</key>
-              <string>com.shadowvillage.game.gtaopenworld</string>
+              <string>com.shadowvillage.game.rpgadventure</string>
               <key>CFBundleExecutable</key>
               <string>GameHub</string>
               <key>CFBundleName</key>
               <string>GameHub</string>
               <key>CFBundleDisplayName</key>
-              <string>ZombieOpenWorld</string>
+              <string>RPGAdventure</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleShortVersionString</key>
@@ -754,15 +791,6 @@ jobs:
                   <string>UIInterfaceOrientationLandscapeLeft</string>
                   <string>UIInterfaceOrientationLandscapeRight</string>
               </array>
-              <key>GCSupportedGameControllers</key>
-              <array>
-                  <dict>
-                      <key>ProfileName</key>
-                      <string>ExtendedGamepad</string>
-                  </dict>
-              </array>
-              <key>GCRequiresControllerUserInterface</key>
-              <false/>
           </dict>
           </plist>
           EOF
@@ -789,7 +817,7 @@ jobs:
           cd build/IPA_Structure
           zip -q -r ../ShadowVillage3D.ipa Payload
           cd ../..
-          echo "=== GTA OPEN WORLD ZOMBIE IPA GENERATED SUCCESSFULLY ==="
+          echo "=== RPG OPEN WORLD ADVENTURE IPA GENERATED SUCCESSFULLY ==="
 
       - name: Upload Artifact & Generate Direct Download Link
         uses: actions/upload-artifact@v4
