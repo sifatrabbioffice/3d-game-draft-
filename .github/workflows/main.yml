@@ -1,4 +1,4 @@
-name: ⚔️ Shadow Village 3D – Open World RPG Adventure
+name: ⚔️ Shadow Village 3D – Ultimate RPG Movement Fix
 
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
           }
           EOF
 
-      # ── Custom Touch Joystick System ─────────────────────────────────────────
+      # ── Smooth Touch Joystick System ─────────────────────────────────────────
       - name: Write Touch Input System
         run: |
           cat << 'EOF' > GameHub/Sources/Input/TouchJoystick.swift
@@ -82,7 +82,7 @@ jobs:
                   addSubview(baseView)
                   
                   stickView.frame = CGRect(x: 0, y: 0, width: stickRadius * 2, height: stickRadius * 2)
-                  stickView.backgroundColor = UIColor(white: 1.0, alpha: 0.6)
+                  stickView.backgroundColor = UIColor(white: 1.0, alpha: 0.7)
                   stickView.layer.cornerRadius = stickRadius
                   stickView.isUserInteractionEnabled = false
                   addSubview(stickView)
@@ -123,6 +123,7 @@ jobs:
                   
                   stickView.center = CGPoint(x: finalX, y: finalY)
                   
+                  // এক্সপ্লিসিটলি ভেক্টর ডিরেকশন জেনারেট করা
                   let normX = cos(angle) * (clampedDist / baseRadius)
                   let normY = sin(angle) * (clampedDist / baseRadius)
                   onChange(CGPoint(x: normX, y: -normY)) 
@@ -197,9 +198,9 @@ jobs:
                   
                   statLbl.frame            = CGRect(x: bounds.width - 200, y: bounds.height - 65, width: 180, height: 45)
                   statLbl.autoresizingMask = [.flexibleLeftMargin, .flexibleTopMargin]
-                  statLbl.text             = "WEAPON: SWORD"
-                  statLbl.textColor        = UIColor(red: 0.0, green: 0.75, blue: 1.0, alpha: 1.0)
-                  statLbl.font = customFont(20, bold: true)
+                  statLbl.text             = "WEAPON: MAGIC SWORD"
+                  statLbl.textColor        = UIColor(red: 0.0, green: 0.8, blue: 1.0, alpha: 1.0)
+                  statLbl.font = customFont(18, bold: true)
                   statLbl.textAlignment    = .right
                   addSubview(statLbl)
                   
@@ -321,7 +322,7 @@ jobs:
               private func generateNewRoamTarget() {
                   let range: Float = 40.0
                   roamTarget = SCNVector3(Float.random(in: -range...range), 0.5, Float.random(in: -range...range))
-                  speed = kind == .goblin ? Float.random(in: 2.2...3.2) : Float.random(in: 1.2...1.8)
+                  speed = kind == .goblin ? Float.random(in: 2.5...3.5) : Float.random(in: 1.4...2.0)
               }
               
               func updateAI(playerPosition: SCNVector3, dt: Float) {
@@ -331,7 +332,7 @@ jobs:
                   let dz = playerPosition.z - position.z
                   let distToPlayer = sqrt(dx * dx + dz * dz)
                   
-                  let detectionRange: Float = kind == .darkKnight ? 12.0 : 8.0
+                  let detectionRange: Float = kind == .darkKnight ? 14.0 : 9.0
                   
                   if distToPlayer < detectionRange {
                       isChasing = true
@@ -380,7 +381,7 @@ jobs:
           }
           EOF
 
-      # ── GameViewController (Explicit Float.pi Fixing) ────────────────────────
+      # ── GameViewController (Anti-Elastic & Ultimate Aim Core) ────────────────
       - name: Create GameViewController.swift
         run: |
           cat << 'EOF' > GameHub/Sources/GameViewController.swift
@@ -410,7 +411,7 @@ jobs:
               private var isGameOver = false
               
               private var lastAttackTime: TimeInterval = 0
-              private let attackRate: TimeInterval = 0.25
+              private let attackRate: TimeInterval = 0.20 // অ্যাটাক স্পিড আরও ফাস্ট করা হলো
               private var lastUpdateTime: TimeInterval = 0
               
               override func viewDidLoad() {
@@ -446,15 +447,15 @@ jobs:
               private func setupRPGWorld() {
                   let ambLight = SCNLight()
                   ambLight.type = .ambient
-                  ambLight.color = UIColor(white: 0.4, alpha: 1.0)
+                  ambLight.color = UIColor(white: 0.45, alpha: 1.0)
                   let ambNode = SCNNode()
                   ambNode.light = ambLight
                   scene.rootNode.addChildNode(ambNode)
                   
                   let sunLight = SCNLight()
                   sunLight.type = .directional
-                  sunLight.color = UIColor(red: 0.9, green: 0.85, blue: 0.8, alpha: 1.0)
-                  sunLight.intensity = 1500
+                  sunLight.color = UIColor(red: 0.95, green: 0.9, blue: 0.85, alpha: 1.0)
+                  sunLight.intensity = 1600
                   sunLight.castsShadow = true
                   let sunNode = SCNNode()
                   sunNode.light = sunLight
@@ -465,7 +466,7 @@ jobs:
                   let floorGeo = SCNFloor()
                   floorGeo.reflectivity = 0.01
                   let floorMat = SCNMaterial()
-                  floorMat.diffuse.contents = UIColor(red: 0.15, green: 0.35, blue: 0.15, alpha: 1.0)
+                  floorMat.diffuse.contents = UIColor(red: 0.18, green: 0.38, blue: 0.18, alpha: 1.0)
                   floorGeo.materials = [floorMat]
                   let floorNode = SCNNode(geometry: floorGeo)
                   floorNode.physicsBody = SCNPhysicsBody(type: .static, shape: nil)
@@ -476,7 +477,7 @@ jobs:
               private func setupHeroPlayer() {
                   let bodyGeo = SCNCapsule(capRadius: 0.38, height: 1.75)
                   let bodyMat = SCNMaterial()
-                  bodyMat.diffuse.contents = UIColor(red: 0.0, green: 0.4, blue: 0.9, alpha: 1.0)
+                  bodyMat.diffuse.contents = UIColor(red: 0.0, green: 0.45, blue: 0.95, alpha: 1.0)
                   bodyGeo.materials = [bodyMat]
                   
                   playerNode = SCNNode(geometry: bodyGeo)
@@ -488,16 +489,17 @@ jobs:
                   playerNode.addChildNode(head)
                   
                   let swordGeo = SCNBox(width: 0.08, height: 0.9, length: 0.08, chamferRadius: 0)
-                  swordGeo.firstMaterial?.diffuse.contents = UIColor.lightGray
+                  swordGeo.firstMaterial?.diffuse.contents = UIColor.cyan
                   let swordNode = SCNNode(geometry: swordGeo)
                   swordNode.position = SCNVector3(0.5, 0.4, -0.3)
-                  // টাইপ অস্পষ্টতা দূর করতে Explicitly Float.pi ব্যবহার করা হলো
                   swordNode.eulerAngles = SCNVector3(-Float.pi / 4.0, 0, 0)
                   playerNode.addChildNode(swordNode)
                   
+                  // ফিজিক্স টাইপ চেঞ্জ এবং ভেলোসিটি লক রুলস সেটআপ
                   let pBody = SCNPhysicsBody(type: .dynamic, shape: SCNPhysicsShape(geometry: bodyGeo, options: nil))
                   pBody.allowsResting = false
                   pBody.friction = 0.0
+                  pBody.damping = 1.0 // ইলাস্টিক রিটার্ন প্রিভেন্ট করবে
                   pBody.angularVelocityFactor = SCNVector3(0, 0, 0)
                   pBody.categoryBitMask = PhysicsMask.player
                   pBody.collisionBitMask = PhysicsMask.wall | PhysicsMask.ground | PhysicsMask.enemy
@@ -557,7 +559,7 @@ jobs:
                       let kind: EnemyKind = Bool.random() ? .goblin : .darkKnight
                       let enemy = EnemyNode(kind: kind)
                       
-                      let spawnRadius = Float.random(in: 8...45)
+                      let spawnRadius = Float.random(in: 10...45)
                       let angle = Float.random(in: 0...(Float.pi * 2.0))
                       enemy.position = SCNVector3(sin(angle) * spawnRadius, 0.0, cos(angle) * spawnRadius)
                       
@@ -581,29 +583,32 @@ jobs:
                   let dt = Float(time - lastUpdateTime)
                   lastUpdateTime = time
                   
+                  // ফিক্স ১: কোঅর্ডিনেট পজিশন শিফটিং ম্যাপিং (ক্যারেক্টার আর আগের জায়গায় ফিরে যাবে না)
                   if leftVector != .zero {
-                      let runSpeed: Float = 8.0
-                      let moveX = Float(leftVector.x) * runSpeed
-                      let moveZ = -Float(leftVector.y) * runSpeed
+                      let runSpeed: Float = 7.5
+                      let dx = Float(leftVector.x) * runSpeed * dt
+                      let dz = -Float(leftVector.y) * runSpeed * dt
                       
-                      playerNode.physicsBody?.velocity = SCNVector3(moveX, playerNode.physicsBody?.velocity.y ?? 0, moveZ)
+                      playerNode.position.x += dx
+                      playerNode.position.z += dz
                       
                       if rightVector == .zero {
-                          playerNode.eulerAngles.y = atan2(-moveX, -moveZ)
+                          playerNode.eulerAngles.y = atan2(-dx, -dz)
                       }
-                  } else {
-                      playerNode.physicsBody?.velocity.x = 0
-                      playerNode.physicsBody?.velocity.z = 0
                   }
                   
+                  // ফিক্স ২: ডান জয়স্টিক ড্রাগ করলেই পারফেক্ট অ্যাঙ্গেল এইম লক হবে এবং সোর্ড স্ল্যাশ বের হবে
                   if rightVector != .zero {
-                      playerNode.eulerAngles.y = atan2(-Float(rightVector.x), Float(rightVector.y))
+                      let targetAngle = atan2(-Float(rightVector.x), Float(rightVector.y))
+                      playerNode.eulerAngles.y = targetAngle
+                      
                       if time - lastAttackTime >= attackRate {
                           lastAttackTime = time
-                          executeSwordSlash()
+                          executeSwordSlash(aimAngle: targetAngle)
                       }
                   }
                   
+                  // স্মুথ থার্ড পারসন ক্যামেরা ক্যামেরা ফলো লজিক
                   let targetCamPos = SCNVector3(playerNode.position.x, playerNode.position.y + 15, playerNode.position.z + 12)
                   cameraNode.position.x += (targetCamPos.x - cameraNode.position.x) * 0.1
                   cameraNode.position.z += (targetCamPos.z - cameraNode.position.z) * 0.1
@@ -618,7 +623,7 @@ jobs:
                       if sqrt(dx*dx + dz*dz) < 1.2 {
                           if time - enemy.lastAttackTime >= 1.2 {
                               enemy.lastAttackTime = time
-                              let dmg = enemy.kind == .darkKnight ? 20.0 : 8.0
+                              let dmg = enemy.kind == .darkKnight ? 18.0 : 6.0
                               playerHP = max(0, playerHP - Float(dmg))
                               
                               DispatchQueue.main.async { [weak self] in
@@ -639,13 +644,15 @@ jobs:
                   }
               }
               
-              private func executeSwordSlash() {
-                  let slashGeo = SCNCylinder(radius: 0.6, height: 0.05)
-                  slashGeo.firstMaterial?.diffuse.contents = UIColor.yellow
+              private func executeSwordSlash(aimAngle: Float) {
+                  // এনার্জি স্ল্যাশ অবজেক্ট জেনারেশন এবং ডিরেকশন ফিক্সিং
+                  let slashGeo = SCNCylinder(radius: 0.65, height: 0.06)
+                  slashGeo.firstMaterial?.diffuse.contents = UIColor.cyan
                   slashGeo.firstMaterial?.lightingModel = .constant
                   
                   let slashNode = SCNNode(geometry: slashGeo)
-                  slashNode.position = SCNVector3(playerNode.position.x, playerNode.position.y, playerNode.position.z)
+                  // প্লেয়ারের বুক বরাবর হাইট সেট করা হলো যাতে মাটিতে ড্রপ না করে শত্রুকে ডিরেক্ট হিট করে
+                  slashNode.position = SCNVector3(playerNode.position.x, playerNode.position.y + 0.2, playerNode.position.z)
                   slashNode.eulerAngles.x = Float.pi / 2.0
                   
                   let sBody = SCNPhysicsBody(type: .dynamic, shape: nil)
@@ -656,11 +663,11 @@ jobs:
                   
                   scene.rootNode.addChildNode(slashNode)
                   
-                  let angle = playerNode.eulerAngles.y
-                  let speed: Float = 26.0
-                  sBody.velocity = SCNVector3(-sin(angle) * speed, 0, -cos(angle) * speed)
+                  // এইম অ্যাঙ্গেল ভেক্টর দিয়ে নিখুঁত ফরোয়ার্ড স্পিড ক্যালকুলেশন
+                  let speed: Float = 28.0
+                  sBody.velocity = SCNVector3(-sin(aimAngle) * speed, 0, -cos(aimAngle) * speed)
                   
-                  slashNode.runAction(SCNAction.sequence([SCNAction.wait(duration: 0.6), SCNAction.removeFromParentNode()]))
+                  slashNode.runAction(SCNAction.sequence([SCNAction.wait(duration: 0.7), SCNAction.removeFromParentNode()]))
               }
               
               private func triggerGameOver() {
@@ -705,8 +712,8 @@ jobs:
                   if let e = enemy, e.isAlive {
                       e.takeDamage(50.0)
                       if !e.isAlive {
-                          let goldReward = e.kind == .darkKnight ? Int.random(in: 50...100) : Int.random(in: 15...30)
-                          let xpReward = e.kind == .darkKnight ? 40 : 15
+                          let goldReward = e.kind == .darkKnight ? Int.random(in: 60...120) : Int.random(in: 20...40)
+                          let xpReward = e.kind == .darkKnight ? 50 : 20
                           
                           playerGold += goldReward
                           playerXP += xpReward
